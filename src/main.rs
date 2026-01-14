@@ -69,6 +69,11 @@ struct TileConfig {
     blade_max: Option<i32>,
     grass_base: Option<String>,
     grass_shades: Option<[String; 3]>,
+    dirt_base: Option<String>,
+    dirt_splotches: Option<[String; 2]>,
+    dirt_stones: Option<[String; 2]>,
+    dirt_splotch_count: Option<u32>,
+    dirt_stone_count: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,8 +115,7 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
                 .seed
                 .or(tile.seed)
                 .unwrap_or_else(rand::random::<u64>);
-            let palette = palette(&tile)?;
-            render_grass_tile(size, bg, seed, &tile, &palette)?
+            render_tile(size, bg, seed, &tile)?
         }
         ConfigFile::Tilesheet(sheet) => {
             if sheet.seeds.is_empty() {
@@ -126,14 +130,12 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
                 .or_else(|| tile_config.bg.clone())
                 .unwrap_or_else(|| "#2b2f3a".to_string());
             let bg = parse_hex_color(&bg_hex)?;
-            let palette = palette(&tile_config)?;
             let columns = sheet.columns.unwrap_or(4).max(1);
             let padding = sheet.padding.unwrap_or(0);
             render_tilesheet(
                 size,
                 bg,
                 &tile_config,
-                &palette,
                 &sheet.seeds,
                 columns,
                 padding,
@@ -188,21 +190,43 @@ fn output_path_for_config(config_path: &Path, out_override: Option<&PathBuf>) ->
     Path::new(DEFAULT_OUT_DIR).join(format!("{stem}.png"))
 }
 
-fn palette(config: &TileConfig) -> Result<Vec<Rgba<u8>>, String> {
+fn grass_palette(config: &TileConfig) -> Result<[Rgba<u8>; 4], String> {
     let base_hex = config
         .grass_base
         .clone()
         .unwrap_or_else(|| "#205c3e".to_string());
     let shades = config.grass_shades.clone().unwrap_or([
-        "#205c3e".to_string(),
-        "#32784e".to_string(),
-        "#4a9864".to_string(),
+        "#2f6f4a".to_string(),
+        "#3f8f5e".to_string(),
+        "#58b174".to_string(),
     ]);
-    Ok(vec![
+    Ok([
         parse_hex_color(&base_hex)?,
         parse_hex_color(&shades[0])?,
         parse_hex_color(&shades[1])?,
         parse_hex_color(&shades[2])?,
+    ])
+}
+
+fn dirt_palette(config: &TileConfig) -> Result<[Rgba<u8>; 5], String> {
+    let base_hex = config
+        .dirt_base
+        .clone()
+        .unwrap_or_else(|| "#6b4a2b".to_string());
+    let splotch_hexes = config.dirt_splotches.clone().unwrap_or([
+        "#6a4a2f".to_string(),
+        "#5c3f27".to_string(),
+    ]);
+    let stone_hexes = config.dirt_stones.clone().unwrap_or([
+        "#4b5057".to_string(),
+        "#3e4349".to_string(),
+    ]);
+    Ok([
+        parse_hex_color(&base_hex)?,
+        parse_hex_color(&splotch_hexes[0])?,
+        parse_hex_color(&splotch_hexes[1])?,
+        parse_hex_color(&stone_hexes[0])?,
+        parse_hex_color(&stone_hexes[1])?,
     ])
 }
 
@@ -265,7 +289,7 @@ fn add_grass_blades(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     base: &ImageBuffer<Rgba<u8>, Vec<u8>>,
     rng: &mut StdRng,
-    palette: &[Rgba<u8>],
+    palette: &[Rgba<u8>; 4],
     blade_min: i32,
     blade_max: i32,
 ) {
@@ -294,18 +318,18 @@ fn render_grass_tile(
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
-    palette: &[Rgba<u8>],
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "grass" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
     let mut rng = StdRng::seed_from_u64(seed);
+    let palette = grass_palette(config)?;
     let mut img = ImageBuffer::from_pixel(size, size, bg);
-    let ground = make_grass_tile(size, palette);
+    let ground = make_grass_tile(size, &palette);
     blit(&mut img, &ground);
     let blade_min = config.blade_min.unwrap_or(1);
     let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
-    add_grass_blades(&mut img, &ground, &mut rng, palette, blade_min, blade_max);
+    add_grass_blades(&mut img, &ground, &mut rng, &palette, blade_min, blade_max);
     Ok(img)
 }
 
@@ -313,7 +337,6 @@ fn render_tilesheet(
     size: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
-    palette: &[Rgba<u8>],
     seeds: &[u64],
     columns: u32,
     padding: u32,
@@ -325,7 +348,7 @@ fn render_tilesheet(
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, seed) in seeds.iter().enumerate() {
-        let tile = render_grass_tile(size, bg, *seed, config, palette)?;
+        let tile = render_tile(size, bg, *seed, config)?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
         let x = (col * size + padding * col) as i32;
@@ -334,6 +357,211 @@ fn render_tilesheet(
     }
 
     Ok(sheet)
+}
+
+fn render_tile(
+    size: u32,
+    bg: Rgba<u8>,
+    seed: u64,
+    config: &TileConfig,
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    match config.name.as_str() {
+        "grass" => render_grass_tile(size, bg, seed, config),
+        "dirt" => render_dirt_tile(size, bg, seed, config),
+        other => Err(format!("Unknown tile name: {other}")),
+    }
+}
+
+fn render_dirt_tile(
+    size: u32,
+    bg: Rgba<u8>,
+    seed: u64,
+    config: &TileConfig,
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    if config.name != "dirt" {
+        return Err(format!("Unknown tile name: {}", config.name));
+    }
+    let mut rng = StdRng::seed_from_u64(seed);
+    let palette = dirt_palette(config)?;
+    let mut img = ImageBuffer::from_pixel(size, size, bg);
+    let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut base, size, palette[0]);
+    blit(&mut img, &base);
+
+    let splotches = config
+        .dirt_splotch_count
+        .unwrap_or((size / 3).max(24));
+    for _ in 0..splotches {
+        let (cx, cy) = random_tile_point(&base, &mut rng);
+        let radius = rng.gen_range(3..=8);
+        let shade = if rng.gen_bool(0.5) { palette[1] } else { palette[2] };
+        draw_oval(&mut img, &base, cx, cy, radius * 2, radius, shade);
+    }
+
+    let stones = config
+        .dirt_stone_count
+        .unwrap_or((size / 10).max(6));
+    for _ in 0..stones {
+        let (cx, cy) = random_tile_point(&base, &mut rng);
+        let radius = rng.gen_range(1..=3);
+        let shade = if rng.gen_bool(0.5) { palette[3] } else { palette[4] };
+        if rng.gen_bool(0.5) {
+            draw_blob(&mut img, &base, cx, cy, radius, shade);
+        } else {
+            draw_triangle(&mut img, &base, cx, cy, radius, shade);
+        }
+    }
+
+    Ok(img)
+}
+
+fn random_tile_point(
+    base: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    rng: &mut StdRng,
+) -> (i32, i32) {
+    let w = base.width() as i32;
+    let h = base.height() as i32;
+    for _ in 0..500 {
+        let x = rng.gen_range(0..w);
+        let y = rng.gen_range(0..h);
+        if base.get_pixel(x as u32, y as u32).0[3] > 0 {
+            return (x, y);
+        }
+    }
+    (w / 2, h / 2)
+}
+
+fn draw_blob(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    mask: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    cx: i32,
+    cy: i32,
+    radius: i32,
+    color: Rgba<u8>,
+) {
+    for dy in -radius..=radius {
+        for dx in -radius..=radius {
+            if dx * dx + dy * dy > radius * radius {
+                continue;
+            }
+            let x = cx + dx;
+            let y = cy + dy;
+            if x < 0 || y < 0 {
+                continue;
+            }
+            let (ux, uy) = (x as u32, y as u32);
+            if ux >= mask.width() || uy >= mask.height() {
+                continue;
+            }
+            if mask.get_pixel(ux, uy).0[3] > 0 {
+                img.put_pixel(ux, uy, color);
+            }
+        }
+    }
+}
+
+fn draw_triangle(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    mask: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    cx: i32,
+    cy: i32,
+    size: i32,
+    color: Rgba<u8>,
+) {
+    if size <= 0 {
+        return;
+    }
+    let p1 = (cx, cy - size);
+    let p2 = (cx - size, cy + size);
+    let p3 = (cx + size, cy + size);
+    let min_x = p2.0.min(p3.0).min(p1.0);
+    let max_x = p2.0.max(p3.0).max(p1.0);
+    let min_y = p1.1.min(p2.1).min(p3.1);
+    let max_y = p1.1.max(p2.1).max(p3.1);
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            if !point_in_triangle((x, y), p1, p2, p3) {
+                continue;
+            }
+            if x < 0 || y < 0 {
+                continue;
+            }
+            let (ux, uy) = (x as u32, y as u32);
+            if ux >= mask.width() || uy >= mask.height() {
+                continue;
+            }
+            if mask.get_pixel(ux, uy).0[3] > 0 {
+                img.put_pixel(ux, uy, color);
+            }
+        }
+    }
+}
+
+fn point_in_triangle(p: (i32, i32), a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> bool {
+    let d1 = sign(p, a, b);
+    let d2 = sign(p, b, c);
+    let d3 = sign(p, c, a);
+    let has_neg = d1 < 0 || d2 < 0 || d3 < 0;
+    let has_pos = d1 > 0 || d2 > 0 || d3 > 0;
+    !(has_neg && has_pos)
+}
+
+fn sign(p1: (i32, i32), p2: (i32, i32), p3: (i32, i32)) -> i64 {
+    (p1.0 - p3.0) as i64 * (p2.1 - p3.1) as i64
+        - (p2.0 - p3.0) as i64 * (p1.1 - p3.1) as i64
+}
+
+fn draw_oval(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    mask: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    cx: i32,
+    cy: i32,
+    rx: i32,
+    ry: i32,
+    color: Rgba<u8>,
+) {
+    if rx <= 0 || ry <= 0 {
+        return;
+    }
+    let rx2 = rx * rx;
+    let ry2 = ry * ry;
+    for dy in -ry..=ry {
+        for dx in -rx..=rx {
+            let lhs = dx * dx * ry2 + dy * dy * rx2;
+            let rhs = rx2 * ry2;
+            if lhs > rhs {
+                continue;
+            }
+            let x = cx + dx;
+            let y = cy + dy;
+            if x < 0 || y < 0 {
+                continue;
+            }
+            let (ux, uy) = (x as u32, y as u32);
+            if ux >= mask.width() || uy >= mask.height() {
+                continue;
+            }
+            if mask.get_pixel(ux, uy).0[3] > 0 {
+                let existing = *img.get_pixel(ux, uy);
+                if existing == color {
+                    img.put_pixel(ux, uy, darken_color(color, 24));
+                } else {
+                    img.put_pixel(ux, uy, color);
+                }
+            }
+        }
+    }
+}
+
+fn darken_color(color: Rgba<u8>, amount: u8) -> Rgba<u8> {
+    let [r, g, b, a] = color.0;
+    Rgba([
+        r.saturating_sub(amount),
+        g.saturating_sub(amount),
+        b.saturating_sub(amount),
+        a,
+    ])
 }
 
 fn blit_offset(

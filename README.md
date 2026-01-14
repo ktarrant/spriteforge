@@ -8,6 +8,7 @@ crate to render pixel-art style sprites based on simple prompt rules.
 ```bash
 cargo run -- --out out/grass.png --config configs/tile/grass.config
 cargo run -- --out out/tilesheet/grass.png --config configs/tilesheet/grass.config
+cargo run -- --out out/dirt.png --config configs/tile/dirt.config
 ```
 
 Build all tilesheets (no args):
@@ -59,5 +60,22 @@ Tilesheet example:
   "seeds": [11, 27, 43, 59, 71, 83, 97, 103, 127, 149, 173, 199],
   "columns": 4,
   "padding": 0
+}
+```
+
+Dirt tile example:
+
+```json
+{
+  "type": "tile",
+  "name": "dirt",
+  "size": 256,
+  "bg": "#2b2f3a",
+  "seed": 4242,
+  "dirt_base": "#6b4a2b",
+  "dirt_splotches": ["#6a4a2f", "#5c3f27"],
+  "dirt_stones": ["#4b5057", "#3e4349"],
+  "dirt_splotch_count": 18,
+  "dirt_stone_count": 10
 }
 ```
