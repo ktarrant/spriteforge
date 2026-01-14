@@ -101,6 +101,7 @@ Transition tile example:
   "transition_angle": 333.435,
   "transition_density": 0.35,
   "transition_bias": 0.85,
+  "transition_falloff": 2.2,
   "grass_base": "#205c3e",
   "grass_shades": ["#2f6f4a", "#3f8f5e", "#58b174"]
 }

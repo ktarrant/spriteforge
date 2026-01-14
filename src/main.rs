@@ -77,6 +77,7 @@ struct TileConfig {
     transition_angle: Option<f32>,
     transition_density: Option<f32>,
     transition_bias: Option<f32>,
+    transition_falloff: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -518,6 +519,7 @@ fn render_transition_tile(
     let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
     let density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
     let bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
+    let falloff = config.transition_falloff.unwrap_or(2.2);
     let angle = angle_override.or(config.transition_angle).unwrap_or(333.435);
     add_grass_blades_weighted(
         &mut img,
@@ -529,6 +531,7 @@ fn render_transition_tile(
         density,
         bias,
         angle,
+        falloff,
     );
 
     Ok(img)
@@ -589,6 +592,7 @@ fn add_grass_blades_weighted(
     density: f32,
     bias: f32,
     angle_deg: f32,
+    falloff: f32,
 ) {
     let min_blade = blade_min.max(1);
     let max_blade = blade_max.max(min_blade);
@@ -603,7 +607,8 @@ fn add_grass_blades_weighted(
         let xf = x as f32 / w;
         let yf = y as f32 / h;
         let edge_weight = edge_weight_for_angle(angle_deg, xf, yf);
-        let prob = density * ((1.0 - bias) + bias * edge_weight);
+        let weighted = edge_weight.powf(falloff.max(0.1));
+        let prob = density * ((1.0 - bias) + bias * weighted);
         if rng.gen_range(0.0..1.0) > prob {
             continue;
         }
