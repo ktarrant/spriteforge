@@ -74,14 +74,25 @@ struct TileConfig {
     dirt_stones: Option<[String; 2]>,
     dirt_splotch_count: Option<u32>,
     dirt_stone_count: Option<u32>,
+    transition_angle: Option<f32>,
+    transition_density: Option<f32>,
+    transition_bias: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
 struct TilesheetConfig {
     tile_config: PathBuf,
+    #[serde(default)]
     seeds: Vec<u64>,
+    variants: Option<Vec<TilesheetVariant>>,
     columns: Option<u32>,
     padding: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TilesheetVariant {
+    seed: u64,
+    angle: Option<f32>,
 }
 
 fn load_config(path: &Path) -> Result<ConfigFile, String> {
@@ -118,8 +129,9 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
             render_tile(size, bg, seed, &tile)?
         }
         ConfigFile::Tilesheet(sheet) => {
-            if sheet.seeds.is_empty() {
-                return Err("Tilesheet seeds list cannot be empty".to_string());
+            let entries = tilesheet_entries(&sheet)?;
+            if entries.is_empty() {
+                return Err("Tilesheet must include seeds or variants".to_string());
             }
             let tile_path = resolve_path(config_path, &sheet.tile_config);
             let tile_config = load_tile_config(&tile_path)?;
@@ -136,7 +148,7 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
                 size,
                 bg,
                 &tile_config,
-                &sheet.seeds,
+                &entries,
                 columns,
                 padding,
             )?
@@ -177,6 +189,32 @@ fn build_all_tilesheets() -> Result<(), String> {
         return Err("No tilesheet configs found".to_string());
     }
     Ok(())
+}
+
+fn tilesheet_entries(sheet: &TilesheetConfig) -> Result<Vec<TilesheetEntry>, String> {
+    if let Some(variants) = &sheet.variants {
+        return Ok(variants
+            .iter()
+            .map(|variant| TilesheetEntry {
+                seed: variant.seed,
+                angle: variant.angle,
+            })
+            .collect());
+    }
+    Ok(sheet
+        .seeds
+        .iter()
+        .map(|seed| TilesheetEntry {
+            seed: *seed,
+            angle: None,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone)]
+struct TilesheetEntry {
+    seed: u64,
+    angle: Option<f32>,
 }
 
 fn output_path_for_config(config_path: &Path, out_override: Option<&PathBuf>) -> PathBuf {
@@ -337,18 +375,18 @@ fn render_tilesheet(
     size: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
-    seeds: &[u64],
+    entries: &[TilesheetEntry],
     columns: u32,
     padding: u32,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     let cols = columns.max(1);
-    let rows = ((seeds.len() as u32) + cols - 1) / cols;
+    let rows = ((entries.len() as u32) + cols - 1) / cols;
     let sheet_w = cols * size + padding * (cols.saturating_sub(1));
     let sheet_h = rows * size + padding * (rows.saturating_sub(1));
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
-    for (i, seed) in seeds.iter().enumerate() {
-        let tile = render_tile(size, bg, *seed, config)?;
+    for (i, entry) in entries.iter().enumerate() {
+        let tile = render_tile_with_angle(size, bg, entry.seed, config, entry.angle)?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
         let x = (col * size + padding * col) as i32;
@@ -365,9 +403,20 @@ fn render_tile(
     seed: u64,
     config: &TileConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    render_tile_with_angle(size, bg, seed, config, None)
+}
+
+fn render_tile_with_angle(
+    size: u32,
+    bg: Rgba<u8>,
+    seed: u64,
+    config: &TileConfig,
+    angle_override: Option<f32>,
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
         "grass" => render_grass_tile(size, bg, seed, config),
         "dirt" => render_dirt_tile(size, bg, seed, config),
+        "transition" => render_transition_tile(size, bg, seed, config, angle_override),
         other => Err(format!("Unknown tile name: {other}")),
     }
 }
@@ -415,6 +464,76 @@ fn render_dirt_tile(
     Ok(img)
 }
 
+fn render_transition_tile(
+    size: u32,
+    bg: Rgba<u8>,
+    seed: u64,
+    config: &TileConfig,
+    angle_override: Option<f32>,
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    if config.name != "transition" {
+        return Err(format!("Unknown tile name: {}", config.name));
+    }
+    let mut rng = StdRng::seed_from_u64(seed);
+    let dirt_palette = dirt_palette(config)?;
+    let grass_palette = grass_palette(config)?;
+    let mut img = ImageBuffer::from_pixel(size, size, bg);
+    let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut base, size, dirt_palette[0]);
+    blit(&mut img, &base);
+
+    let splotches = config
+        .dirt_splotch_count
+        .unwrap_or((size / 3).max(24));
+    for _ in 0..splotches {
+        let (cx, cy) = random_tile_point(&base, &mut rng);
+        let radius = rng.gen_range(3..=8);
+        let shade = if rng.gen_bool(0.5) {
+            dirt_palette[1]
+        } else {
+            dirt_palette[2]
+        };
+        draw_oval(&mut img, &base, cx, cy, radius * 2, radius, shade);
+    }
+
+    let stones = config
+        .dirt_stone_count
+        .unwrap_or((size / 10).max(6));
+    for _ in 0..stones {
+        let (cx, cy) = random_tile_point(&base, &mut rng);
+        let radius = rng.gen_range(1..=3);
+        let shade = if rng.gen_bool(0.5) {
+            dirt_palette[3]
+        } else {
+            dirt_palette[4]
+        };
+        if rng.gen_bool(0.5) {
+            draw_blob(&mut img, &base, cx, cy, radius, shade);
+        } else {
+            draw_triangle(&mut img, &base, cx, cy, radius, shade);
+        }
+    }
+
+    let blade_min = config.blade_min.unwrap_or(1);
+    let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
+    let density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
+    let bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
+    let angle = angle_override.or(config.transition_angle).unwrap_or(333.435);
+    add_grass_blades_weighted(
+        &mut img,
+        &base,
+        &mut rng,
+        &grass_palette,
+        blade_min,
+        blade_max,
+        density,
+        bias,
+        angle,
+    );
+
+    Ok(img)
+}
+
 fn random_tile_point(
     base: &ImageBuffer<Rgba<u8>, Vec<u8>>,
     rng: &mut StdRng,
@@ -458,6 +577,62 @@ fn draw_blob(
             }
         }
     }
+}
+
+fn add_grass_blades_weighted(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    base: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    rng: &mut StdRng,
+    palette: &[Rgba<u8>; 4],
+    blade_min: i32,
+    blade_max: i32,
+    density: f32,
+    bias: f32,
+    angle_deg: f32,
+) {
+    let min_blade = blade_min.max(1);
+    let max_blade = blade_max.max(min_blade);
+    let w = base.width().max(1) as f32;
+    let h = base.height().max(1) as f32;
+    let shades = [palette[1], palette[2], palette[3]];
+
+    for (x, y, pixel) in base.enumerate_pixels() {
+        if pixel.0[3] == 0 {
+            continue;
+        }
+        let xf = x as f32 / w;
+        let yf = y as f32 / h;
+        let edge_weight = edge_weight_for_angle(angle_deg, xf, yf);
+        let prob = density * ((1.0 - bias) + bias * edge_weight);
+        if rng.gen_range(0.0..1.0) > prob {
+            continue;
+        }
+        let length = rng.gen_range(min_blade..=max_blade);
+        let shade = shades[rng.gen_range(0..shades.len())];
+        for dy in 0..length {
+            put_pixel_safe(img, x as i32, y as i32 - dy, shade);
+        }
+    }
+}
+
+fn edge_weight_for_angle(angle_deg: f32, xf: f32, yf: f32) -> f32 {
+    // Convert screen-space diamond coords to orthographic (iso) coords.
+    // The diamond spans full width and half height, centered at (0.5, 0.75).
+    let sx = (xf - 0.5) / 0.5;
+    let sy = (yf - 0.75) / 0.25;
+    let iso_x = (sx + 2.0 * sy) * 0.5;
+    let iso_y = (-sx + 2.0 * sy) * 0.5;
+
+    let angle = angle_deg.to_radians();
+    let vx = angle.cos();
+    let vy = angle.sin();
+    let dot = iso_x * vx + iso_y * vy;
+    let max_dot = vx.abs() + vy.abs();
+    if max_dot <= 0.0 {
+        return 0.0;
+    }
+    let t = dot / max_dot;
+    ((t + 1.0) * 0.5).clamp(0.0, 1.0)
 }
 
 fn draw_triangle(

@@ -9,6 +9,8 @@ crate to render pixel-art style sprites based on simple prompt rules.
 cargo run -- --out out/grass.png --config configs/tile/grass.config
 cargo run -- --out out/tilesheet/grass.png --config configs/tilesheet/grass.config
 cargo run -- --out out/dirt.png --config configs/tile/dirt.config
+cargo run -- --out out/transition_grass.png --config configs/tile/transition_grass.config
+cargo run -- --out out/tilesheet/transition_grass.png --config configs/tilesheet/transition_grass.config
 ```
 
 Build all tilesheets (no args):
@@ -77,5 +79,46 @@ Dirt tile example:
   "dirt_stones": ["#4b5057", "#3e4349"],
   "dirt_splotch_count": 18,
   "dirt_stone_count": 10
+}
+```
+
+Transition tile example:
+
+```json
+{
+  "type": "tile",
+  "name": "transition",
+  "size": 256,
+  "bg": "#2b2f3a",
+  "seed": 777,
+  "dirt_base": "#765234",
+  "dirt_splotches": ["#896548", "#7b583d"],
+  "dirt_stones": ["#4b5057", "#3e4349"],
+  "dirt_splotch_count": 28,
+  "dirt_stone_count": 10,
+  "blade_min": 1,
+  "blade_max": 6,
+  "transition_angle": 333.435,
+  "transition_density": 0.35,
+  "transition_bias": 0.85,
+  "grass_base": "#205c3e",
+  "grass_shades": ["#2f6f4a", "#3f8f5e", "#58b174"]
+}
+```
+
+Transition tilesheet example:
+
+```json
+{
+  "type": "tilesheet",
+  "tile_config": "../tile/transition_grass.config",
+  "variants": [
+    {"seed": 101, "angle": 153.435},
+    {"seed": 102, "angle": 26.5},
+    {"seed": 103, "angle": 206.565},
+    {"seed": 104, "angle": 333.435}
+  ],
+  "columns": 4,
+  "padding": 0
 }
 ```
