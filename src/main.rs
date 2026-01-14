@@ -3,14 +3,17 @@ use image::{ImageBuffer, Rgba};
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+const DEFAULT_OUT_DIR: &str = "out/tilesheet";
+const TILESET_CONFIG_DIR: &str = "configs/tilesheet";
 
 #[derive(Parser, Debug)]
 #[command(name = "spriteforge", about = "Procedural sprite generator")]
 struct Args {
     /// Output PNG path
-    #[arg(long, default_value = "out/sprite.png")]
-    out: PathBuf,
+    #[arg(long)]
+    out: Option<PathBuf>,
 
     /// Image size in pixels (square)
     #[arg(long)]
@@ -31,40 +34,34 @@ struct Args {
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
-    let config = load_config(args.config.as_ref())?;
-    let size = args.size.or(config.size).unwrap_or(256);
-    let bg_hex = args
-        .bg
-        .clone()
-        .or_else(|| config.bg.clone())
-        .unwrap_or_else(|| "#2b2f3a".to_string());
-    let bg = parse_hex_color(&bg_hex)?;
-    let seed = args.seed.or(config.seed).unwrap_or(0xC0FFEE);
-    let mut rng = StdRng::seed_from_u64(seed);
-
-    let mut img = ImageBuffer::from_pixel(size, size, bg);
-    let palette = palette(&config)?;
-    let name = config.name.clone().unwrap_or_else(|| "grass".to_string());
-    if name != "grass" {
-        return Err(format!("Unknown config name: {name}"));
+    if args.config.is_none()
+        && args.out.is_none()
+        && args.size.is_none()
+        && args.bg.is_none()
+        && args.seed.is_none()
+    {
+        build_all_tilesheets()?;
+        return Ok(());
     }
-    let ground = make_grass_tile(size, &palette);
-    blit(&mut img, &ground);
-    let blade_min = config.blade_min.unwrap_or(1);
-    let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
-    add_grass_blades(&mut img, &ground, &mut rng, &palette, blade_min, blade_max);
 
-    if let Some(parent) = args.out.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    img.save(&args.out).map_err(|e| e.to_string())?;
-    println!("Saved sprite to {}", args.out.display());
+    let config_path = args
+        .config
+        .as_ref()
+        .ok_or("Config file is required unless running with no arguments")?;
+    build_from_config_path(config_path, &args)?;
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum ConfigFile {
+    Tile(TileConfig),
+    Tilesheet(TilesheetConfig),
+}
+
 #[derive(Debug, Deserialize, Default)]
-struct Config {
-    name: Option<String>,
+struct TileConfig {
+    name: String,
     size: Option<u32>,
     bg: Option<String>,
     seed: Option<u64>,
@@ -74,15 +71,124 @@ struct Config {
     grass_shades: Option<[String; 3]>,
 }
 
-fn load_config(path: Option<&PathBuf>) -> Result<Config, String> {
-    let Some(path) = path else {
-        return Ok(Config::default());
-    };
+#[derive(Debug, Deserialize)]
+struct TilesheetConfig {
+    tile_config: PathBuf,
+    seeds: Vec<u64>,
+    columns: Option<u32>,
+    padding: Option<u32>,
+}
+
+fn load_config(path: &Path) -> Result<ConfigFile, String> {
     let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     serde_json::from_str(&data).map_err(|e| e.to_string())
 }
 
-fn palette(config: &Config) -> Result<Vec<Rgba<u8>>, String> {
+fn load_tile_config(path: &Path) -> Result<TileConfig, String> {
+    let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let config: ConfigFile = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    match config {
+        ConfigFile::Tile(tile) => Ok(tile),
+        ConfigFile::Tilesheet(_) => Err("Tile config cannot be a tilesheet".to_string()),
+    }
+}
+
+fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String> {
+    let config = load_config(config_path)?;
+    let out_path = output_path_for_config(config_path, args.out.as_ref());
+
+    let image = match config {
+        ConfigFile::Tile(tile) => {
+            let size = args.size.or(tile.size).unwrap_or(256);
+            let bg_hex = args
+                .bg
+                .clone()
+                .or_else(|| tile.bg.clone())
+                .unwrap_or_else(|| "#2b2f3a".to_string());
+            let bg = parse_hex_color(&bg_hex)?;
+            let seed = args
+                .seed
+                .or(tile.seed)
+                .unwrap_or_else(rand::random::<u64>);
+            let palette = palette(&tile)?;
+            render_grass_tile(size, bg, seed, &tile, &palette)?
+        }
+        ConfigFile::Tilesheet(sheet) => {
+            if sheet.seeds.is_empty() {
+                return Err("Tilesheet seeds list cannot be empty".to_string());
+            }
+            let tile_path = resolve_path(config_path, &sheet.tile_config);
+            let tile_config = load_tile_config(&tile_path)?;
+            let size = args.size.or(tile_config.size).unwrap_or(256);
+            let bg_hex = args
+                .bg
+                .clone()
+                .or_else(|| tile_config.bg.clone())
+                .unwrap_or_else(|| "#2b2f3a".to_string());
+            let bg = parse_hex_color(&bg_hex)?;
+            let palette = palette(&tile_config)?;
+            let columns = sheet.columns.unwrap_or(4).max(1);
+            let padding = sheet.padding.unwrap_or(0);
+            render_tilesheet(
+                size,
+                bg,
+                &tile_config,
+                &palette,
+                &sheet.seeds,
+                columns,
+                padding,
+            )?
+        }
+    };
+
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    image.save(&out_path).map_err(|e| e.to_string())?;
+    println!("Saved sprite to {}", out_path.display());
+    Ok(())
+}
+
+fn build_all_tilesheets() -> Result<(), String> {
+    let dir = Path::new(TILESET_CONFIG_DIR);
+    if !dir.exists() {
+        return Err(format!("Tilesheet config directory not found: {TILESET_CONFIG_DIR}"));
+    }
+    let mut found = false;
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("config") {
+            continue;
+        }
+        found = true;
+        let args = Args {
+            out: None,
+            size: None,
+            bg: None,
+            seed: None,
+            config: None,
+        };
+        build_from_config_path(&path, &args)?;
+    }
+    if !found {
+        return Err("No tilesheet configs found".to_string());
+    }
+    Ok(())
+}
+
+fn output_path_for_config(config_path: &Path, out_override: Option<&PathBuf>) -> PathBuf {
+    if let Some(out) = out_override {
+        return out.clone();
+    }
+    let stem = config_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("output");
+    Path::new(DEFAULT_OUT_DIR).join(format!("{stem}.png"))
+}
+
+fn palette(config: &TileConfig) -> Result<Vec<Rgba<u8>>, String> {
     let base_hex = config
         .grass_base
         .clone()
@@ -181,6 +287,83 @@ fn add_grass_blades(
 
 fn default_blade_max(size: u32) -> i32 {
     ((size / 32).max(2)).min(8) as i32
+}
+
+fn render_grass_tile(
+    size: u32,
+    bg: Rgba<u8>,
+    seed: u64,
+    config: &TileConfig,
+    palette: &[Rgba<u8>],
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    if config.name != "grass" {
+        return Err(format!("Unknown tile name: {}", config.name));
+    }
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut img = ImageBuffer::from_pixel(size, size, bg);
+    let ground = make_grass_tile(size, palette);
+    blit(&mut img, &ground);
+    let blade_min = config.blade_min.unwrap_or(1);
+    let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
+    add_grass_blades(&mut img, &ground, &mut rng, palette, blade_min, blade_max);
+    Ok(img)
+}
+
+fn render_tilesheet(
+    size: u32,
+    bg: Rgba<u8>,
+    config: &TileConfig,
+    palette: &[Rgba<u8>],
+    seeds: &[u64],
+    columns: u32,
+    padding: u32,
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    let cols = columns.max(1);
+    let rows = ((seeds.len() as u32) + cols - 1) / cols;
+    let sheet_w = cols * size + padding * (cols.saturating_sub(1));
+    let sheet_h = rows * size + padding * (rows.saturating_sub(1));
+    let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
+
+    for (i, seed) in seeds.iter().enumerate() {
+        let tile = render_grass_tile(size, bg, *seed, config, palette)?;
+        let col = (i as u32) % cols;
+        let row = (i as u32) / cols;
+        let x = (col * size + padding * col) as i32;
+        let y = (row * size + padding * row) as i32;
+        blit_offset(&mut sheet, &tile, x, y);
+    }
+
+    Ok(sheet)
+}
+
+fn blit_offset(
+    target: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    src: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    offset_x: i32,
+    offset_y: i32,
+) {
+    for (x, y, pixel) in src.enumerate_pixels() {
+        if pixel.0[3] > 0 {
+            let tx = x as i32 + offset_x;
+            let ty = y as i32 + offset_y;
+            if tx >= 0 && ty >= 0 {
+                let (tx, ty) = (tx as u32, ty as u32);
+                if tx < target.width() && ty < target.height() {
+                    target.put_pixel(tx, ty, *pixel);
+                }
+            }
+        }
+    }
+}
+
+fn resolve_path(base: &Path, rel: &Path) -> PathBuf {
+    if rel.is_absolute() {
+        rel.to_path_buf()
+    } else {
+        base.parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(rel)
+    }
 }
 
 fn put_pixel_safe(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, x: i32, y: i32, color: Rgba<u8>) {
