@@ -114,12 +114,23 @@ Transition tilesheet example:
   "type": "tilesheet",
   "tile_config": "../tile/transition_grass.config",
   "variants": [
-    {"seed": 101, "angle": 153.435},
-    {"seed": 102, "angle": 26.5},
-    {"seed": 103, "angle": 206.565},
-    {"seed": 104, "angle": 333.435}
+    {"seed": 101, "angles": [153.435]},
+    {"seed": 102, "angles": [26.5]},
+    {"seed": 103, "angles": [206.565]},
+    {"seed": 104, "angles": [333.435]},
+    {"seed": 105, "angles": [153.435, 26.5]},
+    {"seed": 106, "angles": [153.435, 206.565]},
+    {"seed": 107, "angles": [153.435, 333.435]},
+    {"seed": 108, "angles": [26.5, 206.565]},
+    {"seed": 109, "angles": [26.5, 333.435]},
+    {"seed": 110, "angles": [206.565, 333.435]},
+    {"seed": 111, "angles": [153.435, 26.5, 206.565]},
+    {"seed": 112, "angles": [153.435, 26.5, 333.435]},
+    {"seed": 113, "angles": [153.435, 206.565, 333.435]},
+    {"seed": 114, "angles": [26.5, 206.565, 333.435]},
+    {"seed": 115, "angles": [153.435, 26.5, 206.565, 333.435]}
   ],
-  "columns": 4,
+  "columns": 5,
   "padding": 0
 }
 ```

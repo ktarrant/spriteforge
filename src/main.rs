@@ -75,6 +75,7 @@ struct TileConfig {
     dirt_splotch_count: Option<u32>,
     dirt_stone_count: Option<u32>,
     transition_angle: Option<f32>,
+    transition_angles: Option<Vec<f32>>,
     transition_density: Option<f32>,
     transition_bias: Option<f32>,
     transition_falloff: Option<f32>,
@@ -94,6 +95,7 @@ struct TilesheetConfig {
 struct TilesheetVariant {
     seed: u64,
     angle: Option<f32>,
+    angles: Option<Vec<f32>>,
 }
 
 fn load_config(path: &Path) -> Result<ConfigFile, String> {
@@ -198,7 +200,10 @@ fn tilesheet_entries(sheet: &TilesheetConfig) -> Result<Vec<TilesheetEntry>, Str
             .iter()
             .map(|variant| TilesheetEntry {
                 seed: variant.seed,
-                angle: variant.angle,
+                angles: variant
+                    .angles
+                    .clone()
+                    .or_else(|| variant.angle.map(|angle| vec![angle])),
             })
             .collect());
     }
@@ -207,7 +212,7 @@ fn tilesheet_entries(sheet: &TilesheetConfig) -> Result<Vec<TilesheetEntry>, Str
         .iter()
         .map(|seed| TilesheetEntry {
             seed: *seed,
-            angle: None,
+            angles: None,
         })
         .collect())
 }
@@ -215,7 +220,7 @@ fn tilesheet_entries(sheet: &TilesheetConfig) -> Result<Vec<TilesheetEntry>, Str
 #[derive(Debug, Clone)]
 struct TilesheetEntry {
     seed: u64,
-    angle: Option<f32>,
+    angles: Option<Vec<f32>>,
 }
 
 fn output_path_for_config(config_path: &Path, out_override: Option<&PathBuf>) -> PathBuf {
@@ -387,7 +392,7 @@ fn render_tilesheet(
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, entry) in entries.iter().enumerate() {
-        let tile = render_tile_with_angle(size, bg, entry.seed, config, entry.angle)?;
+        let tile = render_tile_with_angles(size, bg, entry.seed, config, entry.angles.as_ref())?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
         let x = (col * size + padding * col) as i32;
@@ -404,20 +409,20 @@ fn render_tile(
     seed: u64,
     config: &TileConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
-    render_tile_with_angle(size, bg, seed, config, None)
+    render_tile_with_angles(size, bg, seed, config, None)
 }
 
-fn render_tile_with_angle(
+fn render_tile_with_angles(
     size: u32,
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
-    angle_override: Option<f32>,
+    angles_override: Option<&Vec<f32>>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
         "grass" => render_grass_tile(size, bg, seed, config),
         "dirt" => render_dirt_tile(size, bg, seed, config),
-        "transition" => render_transition_tile(size, bg, seed, config, angle_override),
+        "transition" => render_transition_tile(size, bg, seed, config, angles_override),
         other => Err(format!("Unknown tile name: {other}")),
     }
 }
@@ -470,7 +475,7 @@ fn render_transition_tile(
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
-    angle_override: Option<f32>,
+    angles_override: Option<&Vec<f32>>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "transition" {
         return Err(format!("Unknown tile name: {}", config.name));
@@ -520,7 +525,11 @@ fn render_transition_tile(
     let density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
     let bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
     let falloff = config.transition_falloff.unwrap_or(2.2);
-    let angle = angle_override.or(config.transition_angle).unwrap_or(333.435);
+    let angles = angles_override
+        .cloned()
+        .or_else(|| config.transition_angles.clone())
+        .or_else(|| config.transition_angle.map(|angle| vec![angle]))
+        .unwrap_or_else(|| vec![333.435]);
     add_grass_blades_weighted(
         &mut img,
         &base,
@@ -530,7 +539,7 @@ fn render_transition_tile(
         blade_max,
         density,
         bias,
-        angle,
+        &angles,
         falloff,
     );
 
@@ -591,7 +600,7 @@ fn add_grass_blades_weighted(
     blade_max: i32,
     density: f32,
     bias: f32,
-    angle_deg: f32,
+    angles_deg: &[f32],
     falloff: f32,
 ) {
     let min_blade = blade_min.max(1);
@@ -606,7 +615,7 @@ fn add_grass_blades_weighted(
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-        let edge_weight = edge_weight_for_angle(angle_deg, xf, yf);
+        let edge_weight = edge_weight_for_angles(angles_deg, xf, yf);
         let weighted = edge_weight.powf(falloff.max(0.1));
         let prob = density * ((1.0 - bias) + bias * weighted);
         if rng.gen_range(0.0..1.0) > prob {
@@ -618,6 +627,14 @@ fn add_grass_blades_weighted(
             put_pixel_safe(img, x as i32, y as i32 - dy, shade);
         }
     }
+}
+
+fn edge_weight_for_angles(angles_deg: &[f32], xf: f32, yf: f32) -> f32 {
+    let mut best: f32 = 0.0;
+    for &angle in angles_deg {
+        best = best.max(edge_weight_for_angle(angle, xf, yf));
+    }
+    best
 }
 
 fn edge_weight_for_angle(angle_deg: f32, xf: f32, yf: f32) -> f32 {
