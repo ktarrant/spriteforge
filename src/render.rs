@@ -41,6 +41,7 @@ pub fn render_tile(
         "grass" => render_grass_tile(size, bg, seed, config),
         "dirt" => render_dirt_tile(size, bg, seed, config),
         "transition" => render_transition_tile(size, bg, seed, config, angles_override),
+        "debug_weight" => render_weight_debug_tile(size, bg, config, angles_override),
         other => Err(format!("Unknown tile name: {other}")),
     }
 }
@@ -180,6 +181,40 @@ fn render_transition_tile(
         &angles,
         falloff,
     );
+
+    Ok(img)
+}
+
+fn render_weight_debug_tile(
+    size: u32,
+    bg: Rgba<u8>,
+    config: &TileConfig,
+    angles_override: Option<&Vec<f32>>,
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    if config.name != "debug_weight" {
+        return Err(format!("Unknown tile name: {}", config.name));
+    }
+    let angles = angles_override
+        .cloned()
+        .or_else(|| config.transition_angles.clone())
+        .or_else(|| config.transition_angle.map(|angle| vec![angle]))
+        .unwrap_or_else(|| vec![333.435]);
+
+    let mut img = ImageBuffer::from_pixel(size, size, bg);
+    let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut base, size, Rgba([0, 0, 0, 255]));
+
+    let w = base.width().max(1) as f32;
+    let h = base.height().max(1) as f32;
+    for (x, y, pixel) in base.enumerate_pixels() {
+        if pixel.0[3] == 0 {
+            continue;
+        }
+        let xf = x as f32 / w;
+        let yf = y as f32 / h;
+        let weight = edge_weight_for_angles(&angles, xf, yf);
+        img.put_pixel(x, y, weight_color(weight));
+    }
 
     Ok(img)
 }
@@ -327,7 +362,7 @@ fn add_grass_blades_weighted(
         let xf = x as f32 / w;
         let yf = y as f32 / h;
         let edge_weight = edge_weight_for_angles(angles_deg, xf, yf);
-        let weighted = edge_weight.powf(falloff.max(0.1));
+        let weighted = edge_weight.powf(falloff);
         let prob = density * ((1.0 - bias) + bias * weighted);
         if rng.gen_range(0.0..1.0) > prob {
             continue;
@@ -349,21 +384,31 @@ fn edge_weight_for_angles(angles_deg: &[f32], xf: f32, yf: f32) -> f32 {
 }
 
 fn edge_weight_for_angle(angle_deg: f32, xf: f32, yf: f32) -> f32 {
-    let sx = (xf - 0.5) / 0.5;
-    let sy = (yf - 0.75) / 0.25;
-    let iso_x = (sx + 2.0 * sy) * 0.5;
-    let iso_y = (-sx + 2.0 * sy) * 0.5;
+    // Center of the tile in image space (adjust if your tile isn't centered in the image)
+    let cx = 0.5;
+    let cy = 0.75;
 
-    let angle = angle_deg.to_radians();
-    let vx = angle.cos();
-    let vy = angle.sin();
-    let dot = iso_x * vx + iso_y * vy;
-    let max_dot = vx.abs() + vy.abs();
-    if max_dot <= 0.0 {
-        return 0.0;
-    }
-    let t = dot / max_dot;
-    ((t + 1.0) * 0.5).clamp(0.0, 1.0)
+    // Centered coordinates; flip Y so "up" is positive (optional but usually nicer)
+    let dx = xf - cx;
+    let dy = (cy - yf) / 0.5;
+
+    // Direction unit vector for the gradient
+    let a = angle_deg.to_radians();
+    let nx = a.cos();
+    let ny = a.sin();
+
+    // Signed coordinate along gradient direction
+    let s = dx * nx + dy * ny * 2.0;
+
+    // Normalize: in normalized space, s is typically within about [-1,1]
+    // Clamp makes it safe even if corners exceed slightly due to aspect.
+    (0.25 + 0.5 * s).clamp(0.0, 1.0)
+}
+
+fn weight_color(weight: f32) -> Rgba<u8> {
+    let t = weight.clamp(0.0, 1.0);
+    let v = (255.0 * t) as u8;
+    Rgba([v, v, v, 255])
 }
 
 fn random_tile_point(base: &ImageBuffer<Rgba<u8>, Vec<u8>>, rng: &mut StdRng) -> (i32, i32) {
@@ -552,4 +597,3 @@ fn blit(target: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, src: &ImageBuffer<Rgba<u8>,
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
-

@@ -53,6 +53,11 @@ CLI flags (like `--size` or `--bg`) override values in the config when provided.
 Running with no arguments will build every tilesheet config in `configs/tilesheet`
 and write outputs to `out/tilesheet/<config-name>.png`.
 
+Debug weight visualization (manual run only):
+```bash
+cargo run -- --out out/tilesheet/debug_weight.png --config configs/debug/debug_weight_tileset.config
+```
+
 Tilesheet example:
 
 ```json
