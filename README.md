@@ -11,6 +11,8 @@ cargo run -- --out out/tilesheet/grass.png --config configs/tilesheet/grass.conf
 cargo run -- --out out/dirt.png --config configs/tile/dirt.config
 cargo run -- --out out/grass_transition.png --config configs/tile/grass_transition.config
 cargo run -- --out out/tilesheet/grass_transition.png --config configs/tilesheet/grass_transition.config
+cargo run -- --out out/water.png --config configs/tile/water.config
+cargo run -- --out out/tilesheet/water.png --config configs/tilesheet/water.config
 ```
 
 Build all tilesheets (no args):
@@ -23,7 +25,7 @@ Bevy tilesheet viewer (workspace crate):
 cargo run -p spriteforge_bevy --example view_tilesheet
 ```
 The demo expects `out/tilesheet/grass.png` + `.json`, `out/tilesheet/dirt.png` + `.json`,
-and `out/tilesheet/grass_transition.png` + `.json`.
+`out/tilesheet/grass_transition.png` + `.json`, and `out/tilesheet/water.png` + `.json`.
 
 ## CLI
 
@@ -61,6 +63,7 @@ Use `bg: "transparent"` for a transparent background.
 Running with no arguments will build every tilesheet config in `configs/tilesheet`
 and write outputs to `out/tilesheet/<config-name>.png`.
 Tilesheet builds also write metadata JSON next to the image (same name, `.json`).
+Water tilesheets also emit a mask PNG named `<config-name>_mask.png`.
 
 Debug weight visualization (manual run only):
 ```bash
@@ -133,4 +136,3 @@ Transition tilesheet example (grass overlay):
   "padding": 0
 }
 ```
-

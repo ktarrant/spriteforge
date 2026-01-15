@@ -35,6 +35,7 @@ pub fn load_tilesheet_metadata(path: &Path) -> Result<TilesheetMetadata, String>
 pub enum BaseTile {
     Grass,
     Dirt,
+    Water,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +44,7 @@ pub struct RenderTileLayers {
     pub height: u32,
     pub grass: Vec<Option<u32>>,
     pub dirt: Vec<Option<u32>>,
+    pub water: Vec<Option<u32>>,
     pub transition: Vec<Option<u32>>,
 }
 
@@ -52,11 +54,13 @@ pub fn build_render_layers<R: rand::Rng>(
     height: u32,
     grass_meta: &TilesheetMetadata,
     dirt_meta: &TilesheetMetadata,
+    water_meta: &TilesheetMetadata,
     transition_meta: &TilesheetMetadata,
     rng: &mut R,
 ) -> RenderTileLayers {
     let mut grass = vec![None; base_tiles.len()];
     let mut dirt = vec![None; base_tiles.len()];
+    let mut water = vec![None; base_tiles.len()];
     let mut transition = vec![None; base_tiles.len()];
 
     let transition_lookup = build_transition_lookup(transition_meta);
@@ -68,6 +72,10 @@ pub fn build_render_layers<R: rand::Rng>(
                 BaseTile::Grass => {
                     let index = rng.gen_range(0..grass_meta.tile_count) as u32;
                     grass[idx] = Some(index);
+                }
+                BaseTile::Water => {
+                    let index = rng.gen_range(0..water_meta.tile_count) as u32;
+                    water[idx] = Some(index);
                 }
                 BaseTile::Dirt => {
                     let angles = adjacent_grass_angles(x, y, width, height, base_tiles);
@@ -88,6 +96,7 @@ pub fn build_render_layers<R: rand::Rng>(
         height,
         grass,
         dirt,
+        water,
         transition,
     }
 }

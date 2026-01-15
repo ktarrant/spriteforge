@@ -13,9 +13,13 @@ const DIRT_IMAGE: &str = "out/tilesheet/dirt.png";
 const DIRT_META: &str = "out/tilesheet/dirt.json";
 const GRASS_TRANSITION_IMAGE: &str = "out/tilesheet/grass_transition.png";
 const GRASS_TRANSITION_META: &str = "out/tilesheet/grass_transition.json";
+const WATER_IMAGE: &str = "out/tilesheet/water.png";
+const WATER_META: &str = "out/tilesheet/water.json";
 const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const CLUMP_PASSES: usize = 3;
+const WATER_PASS_PASSES: usize = 2;
+const WATER_MIN_NEIGHBORS: i32 = 3;
 const CAMERA_MOVE_SPEED: f32 = 900.0;
 const CAMERA_ZOOM: f32 = 1.6;
 
@@ -27,6 +31,8 @@ struct TilesheetPaths {
     dirt_meta: PathBuf,
     grass_transition_image: PathBuf,
     grass_transition_meta: PathBuf,
+    water_image: PathBuf,
+    water_meta: PathBuf,
 }
 
 fn main() {
@@ -51,6 +57,8 @@ fn main() {
             dirt_meta: workspace_root.join(DIRT_META),
             grass_transition_image: PathBuf::from(GRASS_TRANSITION_IMAGE),
             grass_transition_meta: workspace_root.join(GRASS_TRANSITION_META),
+            water_image: PathBuf::from(WATER_IMAGE),
+            water_meta: workspace_root.join(WATER_META),
         })
         .add_systems(Startup, setup)
         .add_systems(Update, camera_pan)
@@ -90,12 +98,22 @@ fn setup(
         }
     };
 
+    let water_meta = match load_tilesheet_metadata(&paths.water_meta) {
+        Ok(data) => data,
+        Err(err) => {
+            eprintln!("Failed to load water metadata: {err}");
+            return;
+        }
+    };
+
     let grass_texture: Handle<Image> =
         asset_server.load(paths.grass_image.to_string_lossy().to_string());
     let dirt_texture: Handle<Image> =
         asset_server.load(paths.dirt_image.to_string_lossy().to_string());
     let transition_texture: Handle<Image> =
         asset_server.load(paths.grass_transition_image.to_string_lossy().to_string());
+    let water_texture: Handle<Image> =
+        asset_server.load(paths.water_image.to_string_lossy().to_string());
 
     let map_size = TilemapSize {
         x: MAP_WIDTH,
@@ -113,16 +131,15 @@ fn setup(
     let mut rng = StdRng::seed_from_u64(1337);
     let mut terrain = generate_terrain_map(MAP_WIDTH, MAP_HEIGHT, &mut rng);
     smooth_terrain(&mut terrain, MAP_WIDTH, MAP_HEIGHT, CLUMP_PASSES);
-    let base_tiles: Vec<BaseTile> = terrain
-        .iter()
-        .map(|&is_grass| if is_grass { BaseTile::Grass } else { BaseTile::Dirt })
-        .collect();
+    reduce_water_islands(&mut terrain, MAP_WIDTH, MAP_HEIGHT, WATER_PASS_PASSES);
+    let base_tiles = terrain.clone();
     let layers = build_render_layers(
         &base_tiles,
         MAP_WIDTH,
         MAP_HEIGHT,
         &grass_meta,
         &dirt_meta,
+        &water_meta,
         &transition_meta,
         &mut rng,
     );
@@ -133,6 +150,8 @@ fn setup(
     let dirt_entity = commands.spawn_empty().id();
     let mut transition_storage = TileStorage::empty(map_size);
     let transition_entity = commands.spawn_empty().id();
+    let mut water_storage = TileStorage::empty(map_size);
+    let water_entity = commands.spawn_empty().id();
 
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
@@ -170,6 +189,17 @@ fn setup(
                     })
                     .id();
                 transition_storage.set(&tile_pos, tile_entity);
+            }
+            if let Some(index) = layers.water[idx] {
+                let tile_entity = commands
+                    .spawn(TileBundle {
+                        position: tile_pos,
+                        tilemap_id: TilemapId(water_entity),
+                        texture_index: TileTextureIndex(index),
+                        ..Default::default()
+                    })
+                    .id();
+                water_storage.set(&tile_pos, tile_entity);
             }
         }
     }
@@ -211,6 +241,19 @@ fn setup(
         transform: transition_transform,
         ..Default::default()
     });
+    let mut water_transform =
+        get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+    water_transform.translation.z = 0.2;
+    commands.entity(water_entity).insert(TilemapBundle {
+        grid_size,
+        size: map_size,
+        storage: water_storage,
+        texture: TilemapTexture::Single(water_texture),
+        tile_size,
+        map_type,
+        transform: water_transform,
+        ..Default::default()
+    });
 }
 
 fn camera_pan(
@@ -241,35 +284,84 @@ fn camera_pan(
     }
 }
 
-fn generate_terrain_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<bool> {
-    let mut cells = vec![false; (width * height) as usize];
+fn generate_terrain_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
+    let mut cells = vec![BaseTile::Dirt; (width * height) as usize];
     for y in 0..height {
         for x in 0..width {
             let idx = (y * width + x) as usize;
-            cells[idx] = rng.gen_range(0.0..1.0) < 0.55;
+            let roll = rng.gen_range(0.0..1.0);
+            cells[idx] = if roll < 0.2 {
+                BaseTile::Water
+            } else if roll < 0.6 {
+                BaseTile::Grass
+            } else {
+                BaseTile::Dirt
+            };
         }
     }
     cells
 }
 
-fn smooth_terrain(cells: &mut [bool], width: u32, height: u32, passes: usize) {
+fn smooth_terrain(cells: &mut [BaseTile], width: u32, height: u32, passes: usize) {
     let mut temp = cells.to_vec();
     for _ in 0..passes {
         for y in 0..height {
             for x in 0..width {
-                let mut count = 0;
-                let mut total = 0;
+                let mut grass_count = 0;
+                let mut dirt_count = 0;
+                let mut water_count = 0;
                 for ny in y.saturating_sub(1)..=(y + 1).min(height - 1) {
                     for nx in x.saturating_sub(1)..=(x + 1).min(width - 1) {
                         let idx = (ny * width + nx) as usize;
-                        total += 1;
-                        if cells[idx] {
-                            count += 1;
+                        match cells[idx] {
+                            BaseTile::Grass => grass_count += 1,
+                            BaseTile::Dirt => dirt_count += 1,
+                            BaseTile::Water => water_count += 1,
                         }
                     }
                 }
                 let idx = (y * width + x) as usize;
-                temp[idx] = count * 2 >= total;
+                let max = grass_count.max(dirt_count).max(water_count);
+                temp[idx] = if max == water_count {
+                    BaseTile::Water
+                } else if max == grass_count {
+                    BaseTile::Grass
+                } else {
+                    BaseTile::Dirt
+                };
+            }
+        }
+        cells.copy_from_slice(&temp);
+    }
+}
+
+fn reduce_water_islands(cells: &mut [BaseTile], width: u32, height: u32, passes: usize) {
+    let mut temp = cells.to_vec();
+    for _ in 0..passes {
+        for y in 0..height {
+            for x in 0..width {
+                let idx = (y * width + x) as usize;
+                if cells[idx] != BaseTile::Water {
+                    temp[idx] = cells[idx];
+                    continue;
+                }
+                let mut water_neighbors = 0;
+                for ny in y.saturating_sub(1)..=(y + 1).min(height - 1) {
+                    for nx in x.saturating_sub(1)..=(x + 1).min(width - 1) {
+                        if nx == x && ny == y {
+                            continue;
+                        }
+                        let nidx = (ny * width + nx) as usize;
+                        if cells[nidx] == BaseTile::Water {
+                            water_neighbors += 1;
+                        }
+                    }
+                }
+                if water_neighbors < WATER_MIN_NEIGHBORS {
+                    temp[idx] = BaseTile::Dirt;
+                } else {
+                    temp[idx] = BaseTile::Water;
+                }
             }
         }
         cells.copy_from_slice(&temp);

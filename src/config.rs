@@ -21,6 +21,7 @@ pub struct TileConfig {
     pub blade_max: Option<i32>,
     pub grass_base: Option<String>,
     pub grass_shades: Option<[String; 3]>,
+    pub water_base: Option<String>,
     pub dirt_base: Option<String>,
     pub dirt_splotches: Option<[String; 2]>,
     pub dirt_stones: Option<[String; 2]>,

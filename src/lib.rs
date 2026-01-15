@@ -5,7 +5,7 @@ use crate::config::{
     load_config, load_tile_config, output_path_for_config, resolve_path, tilesheet_entries,
     ConfigFile, TileConfig, TilesheetEntry, DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
 };
-use crate::render::{parse_hex_color, render_tile, render_tilesheet};
+use crate::render::{parse_hex_color, render_tile, render_tilesheet, render_tilesheet_mask};
 use serde::Serialize;
 
 mod config;
@@ -108,6 +108,15 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
             let columns = sheet.columns.unwrap_or(4).max(1);
             let padding = sheet.padding.unwrap_or(0);
             let image = render_tilesheet(size, bg, &tile_config, &entries, columns, padding)?;
+            if tile_config.name == "water" {
+                let mask = render_tilesheet_mask(size, &entries, columns, padding)?;
+                let mask_path = mask_output_path(&out_path);
+                if let Some(parent) = mask_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                mask.save(&mask_path).map_err(|e| e.to_string())?;
+                println!("Saved tilesheet mask to {}", mask_path.display());
+            }
             write_tilesheet_metadata(
                 &out_path,
                 &entries,
@@ -126,6 +135,15 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
     image.save(&out_path).map_err(|e| e.to_string())?;
     println!("Saved sprite to {}", out_path.display());
     Ok(())
+}
+
+fn mask_output_path(out_path: &Path) -> std::path::PathBuf {
+    let stem = out_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("tilesheet");
+    let file_name = format!("{stem}_mask.png");
+    out_path.with_file_name(file_name)
 }
 
 fn render_single_tile(
