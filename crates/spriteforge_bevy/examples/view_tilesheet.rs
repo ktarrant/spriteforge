@@ -4,13 +4,15 @@ use bevy_ecs_tilemap::helpers::geometry::get_tilemap_center_transform;
 use bevy_ecs_tilemap::prelude::*;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
-use spriteforge_bevy::load_tilesheet_metadata;
+use spriteforge_bevy::{build_render_layers, load_tilesheet_metadata, BaseTile};
 use std::path::PathBuf;
 
 const GRASS_IMAGE: &str = "out/tilesheet/grass.png";
 const GRASS_META: &str = "out/tilesheet/grass.json";
 const DIRT_IMAGE: &str = "out/tilesheet/dirt.png";
 const DIRT_META: &str = "out/tilesheet/dirt.json";
+const DIRT_TO_GRASS_IMAGE: &str = "out/tilesheet/dirt_to_grass.png";
+const DIRT_TO_GRASS_META: &str = "out/tilesheet/dirt_to_grass.json";
 const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const CLUMP_PASSES: usize = 3;
@@ -23,6 +25,8 @@ struct TilesheetPaths {
     grass_meta: PathBuf,
     dirt_image: PathBuf,
     dirt_meta: PathBuf,
+    dirt_to_grass_image: PathBuf,
+    dirt_to_grass_meta: PathBuf,
 }
 
 fn main() {
@@ -45,6 +49,8 @@ fn main() {
             grass_meta: workspace_root.join(GRASS_META),
             dirt_image: PathBuf::from(DIRT_IMAGE),
             dirt_meta: workspace_root.join(DIRT_META),
+            dirt_to_grass_image: PathBuf::from(DIRT_TO_GRASS_IMAGE),
+            dirt_to_grass_meta: workspace_root.join(DIRT_TO_GRASS_META),
         })
         .add_systems(Startup, setup)
         .add_systems(Update, camera_pan)
@@ -76,10 +82,20 @@ fn setup(
         }
     };
 
+    let transition_meta = match load_tilesheet_metadata(&paths.dirt_to_grass_meta) {
+        Ok(data) => data,
+        Err(err) => {
+            eprintln!("Failed to load transition metadata: {err}");
+            return;
+        }
+    };
+
     let grass_texture: Handle<Image> =
         asset_server.load(paths.grass_image.to_string_lossy().to_string());
     let dirt_texture: Handle<Image> =
         asset_server.load(paths.dirt_image.to_string_lossy().to_string());
+    let transition_texture: Handle<Image> =
+        asset_server.load(paths.dirt_to_grass_image.to_string_lossy().to_string());
 
     let map_size = TilemapSize {
         x: MAP_WIDTH,
@@ -97,18 +113,32 @@ fn setup(
     let mut rng = StdRng::seed_from_u64(1337);
     let mut terrain = generate_terrain_map(MAP_WIDTH, MAP_HEIGHT, &mut rng);
     smooth_terrain(&mut terrain, MAP_WIDTH, MAP_HEIGHT, CLUMP_PASSES);
+    let base_tiles: Vec<BaseTile> = terrain
+        .iter()
+        .map(|&is_grass| if is_grass { BaseTile::Grass } else { BaseTile::Dirt })
+        .collect();
+    let layers = build_render_layers(
+        &base_tiles,
+        MAP_WIDTH,
+        MAP_HEIGHT,
+        &grass_meta,
+        &dirt_meta,
+        &transition_meta,
+        &mut rng,
+    );
 
     let mut grass_storage = TileStorage::empty(map_size);
     let grass_entity = commands.spawn_empty().id();
     let mut dirt_storage = TileStorage::empty(map_size);
     let dirt_entity = commands.spawn_empty().id();
+    let mut transition_storage = TileStorage::empty(map_size);
+    let transition_entity = commands.spawn_empty().id();
 
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
-            let is_grass = terrain[(y * MAP_WIDTH + x) as usize];
             let tile_pos = TilePos { x, y };
-            if is_grass {
-                let index = rng.gen_range(0..grass_meta.tile_count) as u32;
+            let idx = (y * MAP_WIDTH + x) as usize;
+            if let Some(index) = layers.grass[idx] {
                 let tile_entity = commands
                     .spawn(TileBundle {
                         position: tile_pos,
@@ -118,8 +148,8 @@ fn setup(
                     })
                     .id();
                 grass_storage.set(&tile_pos, tile_entity);
-            } else {
-                let index = rng.gen_range(0..dirt_meta.tile_count) as u32;
+            }
+            if let Some(index) = layers.dirt[idx] {
                 let tile_entity = commands
                     .spawn(TileBundle {
                         position: tile_pos,
@@ -129,6 +159,17 @@ fn setup(
                     })
                     .id();
                 dirt_storage.set(&tile_pos, tile_entity);
+            }
+            if let Some(index) = layers.transition[idx] {
+                let tile_entity = commands
+                    .spawn(TileBundle {
+                        position: tile_pos,
+                        tilemap_id: TilemapId(transition_entity),
+                        texture_index: TileTextureIndex(index),
+                        ..Default::default()
+                    })
+                    .id();
+                transition_storage.set(&tile_pos, tile_entity);
             }
         }
     }
@@ -155,6 +196,19 @@ fn setup(
         tile_size,
         map_type,
         transform: dirt_transform,
+        ..Default::default()
+    });
+    let mut transition_transform =
+        get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+    transition_transform.translation.z = 0.5;
+    commands.entity(transition_entity).insert(TilemapBundle {
+        grid_size,
+        size: map_size,
+        storage: transition_storage,
+        texture: TilemapTexture::Single(transition_texture),
+        tile_size,
+        map_type,
+        transform: transition_transform,
         ..Default::default()
     });
 }

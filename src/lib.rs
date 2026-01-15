@@ -144,7 +144,7 @@ fn render_single_tile(
         .seed
         .or(tile.seed)
         .unwrap_or_else(rand::random::<u64>);
-    render_tile(size, bg, seed, tile, None)
+    render_tile(size, bg, seed, tile, None, None)
 }
 
 #[derive(Debug, Serialize)]

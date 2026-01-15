@@ -48,12 +48,23 @@ pub struct TilesheetVariant {
     pub seed: u64,
     pub angle: Option<f32>,
     pub angles: Option<Vec<f32>>,
+    pub density: Option<f32>,
+    pub bias: Option<f32>,
+    pub falloff: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TilesheetEntry {
     pub seed: u64,
     pub angles: Option<Vec<f32>>,
+    pub overrides: TransitionOverrides,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TransitionOverrides {
+    pub density: Option<f32>,
+    pub bias: Option<f32>,
+    pub falloff: Option<f32>,
 }
 
 pub fn load_config(path: &Path) -> Result<ConfigFile, String> {
@@ -80,6 +91,11 @@ pub fn tilesheet_entries(sheet: &TilesheetConfig) -> Result<Vec<TilesheetEntry>,
                     .angles
                     .clone()
                     .or_else(|| variant.angle.map(|angle| vec![angle])),
+                overrides: TransitionOverrides {
+                    density: variant.density,
+                    bias: variant.bias,
+                    falloff: variant.falloff,
+                },
             })
             .collect());
     }
@@ -89,6 +105,7 @@ pub fn tilesheet_entries(sheet: &TilesheetConfig) -> Result<Vec<TilesheetEntry>,
         .map(|seed| TilesheetEntry {
             seed: *seed,
             angles: None,
+            overrides: TransitionOverrides::default(),
         })
         .collect())
 }
@@ -115,4 +132,3 @@ pub fn resolve_path(base: &Path, rel: &Path) -> PathBuf {
         base.parent().unwrap_or_else(|| Path::new(".")).join(rel)
     }
 }
-

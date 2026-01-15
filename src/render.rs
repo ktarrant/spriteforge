@@ -2,7 +2,7 @@ use image::{ImageBuffer, Rgba};
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 
-use crate::config::{TileConfig, TilesheetEntry};
+use crate::config::{TileConfig, TilesheetEntry, TransitionOverrides};
 
 pub fn render_tilesheet(
     size: u32,
@@ -19,7 +19,14 @@ pub fn render_tilesheet(
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, entry) in entries.iter().enumerate() {
-        let tile = render_tile(size, bg, entry.seed, config, entry.angles.as_ref())?;
+        let tile = render_tile(
+            size,
+            bg,
+            entry.seed,
+            config,
+            entry.angles.as_ref(),
+            Some(&entry.overrides),
+        )?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
         let x = (col * size + padding * col) as i32;
@@ -36,11 +43,12 @@ pub fn render_tile(
     seed: u64,
     config: &TileConfig,
     angles_override: Option<&Vec<f32>>,
+    overrides: Option<&TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
         "grass" => render_grass_tile(size, bg, seed, config),
         "dirt" => render_dirt_tile(size, bg, seed, config),
-        "transition" => render_transition_tile(size, bg, seed, config, angles_override),
+        "transition" => render_transition_tile(size, bg, seed, config, angles_override, overrides),
         "debug_weight" => render_weight_debug_tile(size, bg, config, angles_override),
         other => Err(format!("Unknown tile name: {other}")),
     }
@@ -115,6 +123,7 @@ fn render_transition_tile(
     seed: u64,
     config: &TileConfig,
     angles_override: Option<&Vec<f32>>,
+    overrides: Option<&TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "transition" {
         return Err(format!("Unknown tile name: {}", config.name));
@@ -161,14 +170,25 @@ fn render_transition_tile(
 
     let blade_min = config.blade_min.unwrap_or(1);
     let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
-    let density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
-    let bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
-    let falloff = config.transition_falloff.unwrap_or(2.2);
+    let mut density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
+    let mut bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
+    let mut falloff = config.transition_falloff.unwrap_or(2.2);
     let angles = angles_override
         .cloned()
         .or_else(|| config.transition_angles.clone())
         .or_else(|| config.transition_angle.map(|angle| vec![angle]))
         .unwrap_or_else(|| vec![333.435]);
+    if let Some(overrides) = overrides {
+        if let Some(override_density) = overrides.density {
+            density = override_density.clamp(0.0, 1.0);
+        }
+        if let Some(override_bias) = overrides.bias {
+            bias = override_bias.clamp(0.0, 1.0);
+        }
+        if let Some(override_falloff) = overrides.falloff {
+            falloff = override_falloff;
+        }
+    }
     add_grass_blades_weighted(
         &mut img,
         &base,
