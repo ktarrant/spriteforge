@@ -260,9 +260,12 @@ fn dirt_palette(config: &TileConfig) -> Result<[Rgba<u8>; 5], String> {
 }
 
 pub fn parse_hex_color(hex: &str) -> Result<Rgba<u8>, String> {
-    let hex = hex.trim_start_matches('#');
+    let hex = hex.trim().trim_start_matches('#');
+    if hex.eq_ignore_ascii_case("transparent") {
+        return Ok(Rgba([0, 0, 0, 0]));
+    }
     if hex.len() != 6 {
-        return Err("Color must be in #RRGGBB format".to_string());
+        return Err("Color must be in #RRGGBB format or 'transparent'".to_string());
     }
     let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| "Invalid red".to_string())?;
     let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| "Invalid green".to_string())?;

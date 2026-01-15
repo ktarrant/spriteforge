@@ -18,6 +18,11 @@ Build all tilesheets (no args):
 cargo run
 ```
 
+Bevy tilesheet viewer (workspace crate):
+```bash
+cargo run -p spriteforge_bevy --example view_tilesheet
+```
+
 ## CLI
 
 ```bash
@@ -49,6 +54,7 @@ All tweakable settings can live in a JSON config file. The `type` field selects
 ```
 
 CLI flags (like `--size` or `--bg`) override values in the config when provided.
+Use `bg: "transparent"` for a transparent background.
 
 Running with no arguments will build every tilesheet config in `configs/tilesheet`
 and write outputs to `out/tilesheet/<config-name>.png`.

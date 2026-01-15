@@ -103,7 +103,7 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
                 .bg
                 .clone()
                 .or_else(|| tile_config.bg.clone())
-                .unwrap_or_else(|| "#2b2f3a".to_string());
+                .unwrap_or_else(|| "transparent".to_string());
             let bg = parse_hex_color(&bg_hex)?;
             let columns = sheet.columns.unwrap_or(4).max(1);
             let padding = sheet.padding.unwrap_or(0);
@@ -138,7 +138,7 @@ fn render_single_tile(
         .bg
         .clone()
         .or_else(|| tile.bg.clone())
-        .unwrap_or_else(|| "#2b2f3a".to_string());
+        .unwrap_or_else(|| "transparent".to_string());
     let bg = parse_hex_color(&bg_hex)?;
     let seed = args
         .seed
