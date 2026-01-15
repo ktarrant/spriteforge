@@ -4,7 +4,7 @@ use rand::rngs::StdRng;
 
 use crate::config::{TileConfig, TransitionOverrides};
 use crate::render::grass::{default_blade_max, grass_palette};
-use crate::render::util::{draw_isometric_ground, edge_weight_for_angles, blit};
+use crate::render::util::{draw_isometric_ground, edge_weight_for_angles};
 
 pub fn render_grass_transition_tile(
     size: u32,
@@ -22,7 +22,6 @@ pub fn render_grass_transition_tile(
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
     draw_isometric_ground(&mut base, size, Rgba([0, 0, 0, 255]));
-    blit(&mut img, &base);
 
     let blade_min = config.blade_min.unwrap_or(1);
     let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
