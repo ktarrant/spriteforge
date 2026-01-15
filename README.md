@@ -13,6 +13,7 @@ cargo run -- --out out/grass_transition.png --config configs/tile/grass_transiti
 cargo run -- --out out/tilesheet/grass_transition.png --config configs/tilesheet/grass_transition.config
 cargo run -- --out out/water.png --config configs/tile/water.config
 cargo run -- --out out/tilesheet/water.png --config configs/tilesheet/water.config
+cargo run -- --out out/tilesheet/water_transition.png --config configs/tilesheet/water_transition.config
 ```
 
 Build all tilesheets (no args):
@@ -63,7 +64,7 @@ Use `bg: "transparent"` for a transparent background.
 Running with no arguments will build every tilesheet config in `configs/tilesheet`
 and write outputs to `out/tilesheet/<config-name>.png`.
 Tilesheet builds also write metadata JSON next to the image (same name, `.json`).
-Water tilesheets also emit a mask PNG named `<config-name>_mask.png`.
+Water tilesheets (including water transitions) also emit a mask PNG named `<config-name>_mask.png`.
 
 Debug weight visualization (manual run only):
 ```bash
@@ -134,5 +135,20 @@ Transition tilesheet example (grass overlay):
   ],
   "columns": 4,
   "padding": 0
+}
+```
+
+Water transition tile example (transparent edge cutout):
+
+```json
+{
+  "type": "tile",
+  "name": "water_transition",
+  "size": 256,
+  "bg": "transparent",
+  "seed": 5555,
+  "water_base": "#1c3f66",
+  "transition_angle": 333.435,
+  "water_edge_cutoff": 0.78
 }
 ```

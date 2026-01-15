@@ -108,8 +108,8 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
             let columns = sheet.columns.unwrap_or(4).max(1);
             let padding = sheet.padding.unwrap_or(0);
             let image = render_tilesheet(size, bg, &tile_config, &entries, columns, padding)?;
-            if tile_config.name == "water" {
-                let mask = render_tilesheet_mask(size, &entries, columns, padding)?;
+            if tile_config.name == "water" || tile_config.name == "water_transition" {
+                let mask = render_tilesheet_mask(size, &tile_config, &entries, columns, padding)?;
                 let mask_path = mask_output_path(&out_path);
                 if let Some(parent) = mask_path.parent() {
                     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
