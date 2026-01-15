@@ -11,8 +11,8 @@ const GRASS_IMAGE: &str = "out/tilesheet/grass.png";
 const GRASS_META: &str = "out/tilesheet/grass.json";
 const DIRT_IMAGE: &str = "out/tilesheet/dirt.png";
 const DIRT_META: &str = "out/tilesheet/dirt.json";
-const DIRT_TO_GRASS_IMAGE: &str = "out/tilesheet/dirt_to_grass.png";
-const DIRT_TO_GRASS_META: &str = "out/tilesheet/dirt_to_grass.json";
+const GRASS_TRANSITION_IMAGE: &str = "out/tilesheet/grass_transition.png";
+const GRASS_TRANSITION_META: &str = "out/tilesheet/grass_transition.json";
 const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const CLUMP_PASSES: usize = 3;
@@ -25,8 +25,8 @@ struct TilesheetPaths {
     grass_meta: PathBuf,
     dirt_image: PathBuf,
     dirt_meta: PathBuf,
-    dirt_to_grass_image: PathBuf,
-    dirt_to_grass_meta: PathBuf,
+    grass_transition_image: PathBuf,
+    grass_transition_meta: PathBuf,
 }
 
 fn main() {
@@ -49,8 +49,8 @@ fn main() {
             grass_meta: workspace_root.join(GRASS_META),
             dirt_image: PathBuf::from(DIRT_IMAGE),
             dirt_meta: workspace_root.join(DIRT_META),
-            dirt_to_grass_image: PathBuf::from(DIRT_TO_GRASS_IMAGE),
-            dirt_to_grass_meta: workspace_root.join(DIRT_TO_GRASS_META),
+            grass_transition_image: PathBuf::from(GRASS_TRANSITION_IMAGE),
+            grass_transition_meta: workspace_root.join(GRASS_TRANSITION_META),
         })
         .add_systems(Startup, setup)
         .add_systems(Update, camera_pan)
@@ -82,7 +82,7 @@ fn setup(
         }
     };
 
-    let transition_meta = match load_tilesheet_metadata(&paths.dirt_to_grass_meta) {
+    let transition_meta = match load_tilesheet_metadata(&paths.grass_transition_meta) {
         Ok(data) => data,
         Err(err) => {
             eprintln!("Failed to load transition metadata: {err}");
@@ -95,7 +95,7 @@ fn setup(
     let dirt_texture: Handle<Image> =
         asset_server.load(paths.dirt_image.to_string_lossy().to_string());
     let transition_texture: Handle<Image> =
-        asset_server.load(paths.dirt_to_grass_image.to_string_lossy().to_string());
+        asset_server.load(paths.grass_transition_image.to_string_lossy().to_string());
 
     let map_size = TilemapSize {
         x: MAP_WIDTH,

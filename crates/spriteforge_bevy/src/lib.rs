@@ -71,10 +71,9 @@ pub fn build_render_layers<R: rand::Rng>(
                 }
                 BaseTile::Dirt => {
                     let angles = adjacent_grass_angles(x, y, width, height, base_tiles);
-                    if angles.is_empty() {
-                        let index = rng.gen_range(0..dirt_meta.tile_count) as u32;
-                        dirt[idx] = Some(index);
-                    } else {
+                    let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
+                    dirt[idx] = Some(dirt_index);
+                    if !angles.is_empty() {
                         let index = pick_transition_index(&angles, &transition_lookup, rng)
                             .unwrap_or_else(|| rng.gen_range(0..dirt_meta.tile_count) as u32);
                         transition[idx] = Some(index);
