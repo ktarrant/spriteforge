@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{
     load_config, load_tile_config, output_path_for_config, resolve_path, tilesheet_entries,
-    ConfigFile, TileConfig, DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
+    ConfigFile, TileConfig, TilesheetEntry, DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
 };
 use crate::render::{parse_hex_color, render_tile, render_tilesheet};
+use serde::Serialize;
 
 mod config;
 mod render;
@@ -106,7 +107,16 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
             let bg = parse_hex_color(&bg_hex)?;
             let columns = sheet.columns.unwrap_or(4).max(1);
             let padding = sheet.padding.unwrap_or(0);
-            render_tilesheet(size, bg, &tile_config, &entries, columns, padding)?
+            let image = render_tilesheet(size, bg, &tile_config, &entries, columns, padding)?;
+            write_tilesheet_metadata(
+                &out_path,
+                &entries,
+                size,
+                columns,
+                padding,
+                config_path,
+            )?;
+            image
         }
     };
 
@@ -137,3 +147,77 @@ fn render_single_tile(
     render_tile(size, bg, seed, tile, None)
 }
 
+#[derive(Debug, Serialize)]
+struct TilesheetMetadata {
+    image: String,
+    config: String,
+    tile_size: u32,
+    columns: u32,
+    rows: u32,
+    padding: u32,
+    tile_count: usize,
+    tiles: Vec<TileMetadata>,
+}
+
+#[derive(Debug, Serialize)]
+struct TileMetadata {
+    index: usize,
+    row: u32,
+    col: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    seed: u64,
+    angles: Vec<f32>,
+}
+
+fn write_tilesheet_metadata(
+    out_path: &Path,
+    entries: &[TilesheetEntry],
+    tile_size: u32,
+    columns: u32,
+    padding: u32,
+    config_path: &Path,
+) -> Result<(), String> {
+    let cols = columns.max(1);
+    let rows = ((entries.len() as u32) + cols - 1) / cols;
+    let mut tiles = Vec::with_capacity(entries.len());
+    for (i, entry) in entries.iter().enumerate() {
+        let col = (i as u32) % cols;
+        let row = (i as u32) / cols;
+        let x = col * tile_size + padding * col;
+        let y = row * tile_size + padding * row;
+        tiles.push(TileMetadata {
+            index: i,
+            row,
+            col,
+            x,
+            y,
+            width: tile_size,
+            height: tile_size,
+            seed: entry.seed,
+            angles: entry.angles.clone().unwrap_or_default(),
+        });
+    }
+
+    let meta = TilesheetMetadata {
+        image: out_path.to_string_lossy().to_string(),
+        config: config_path.to_string_lossy().to_string(),
+        tile_size,
+        columns: cols,
+        rows,
+        padding,
+        tile_count: entries.len(),
+        tiles,
+    };
+
+    let json = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
+    let meta_path = out_path.with_extension("json");
+    if let Some(parent) = meta_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&meta_path, json).map_err(|e| e.to_string())?;
+    println!("Saved tilesheet metadata to {}", meta_path.display());
+    Ok(())
+}
