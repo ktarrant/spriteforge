@@ -26,7 +26,8 @@ Bevy tilesheet viewer (workspace crate):
 cargo run -p spriteforge_bevy --example view_tilesheet
 ```
 The demo expects `out/tilesheet/grass.png` + `.json`, `out/tilesheet/dirt.png` + `.json`,
-`out/tilesheet/grass_transition.png` + `.json`, and `out/tilesheet/water.png` + `.json`.
+`out/tilesheet/grass_transition.png` + `.json`, `out/tilesheet/water.png` + `.json`,
+and `out/tilesheet/water_transition.png` + `.json`.
 
 ## CLI
 

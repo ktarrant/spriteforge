@@ -15,6 +15,8 @@ const GRASS_TRANSITION_IMAGE: &str = "out/tilesheet/grass_transition.png";
 const GRASS_TRANSITION_META: &str = "out/tilesheet/grass_transition.json";
 const WATER_IMAGE: &str = "out/tilesheet/water.png";
 const WATER_META: &str = "out/tilesheet/water.json";
+const WATER_TRANSITION_IMAGE: &str = "out/tilesheet/water_transition.png";
+const WATER_TRANSITION_META: &str = "out/tilesheet/water_transition.json";
 const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const CLUMP_PASSES: usize = 3;
@@ -33,6 +35,8 @@ struct TilesheetPaths {
     grass_transition_meta: PathBuf,
     water_image: PathBuf,
     water_meta: PathBuf,
+    water_transition_image: PathBuf,
+    water_transition_meta: PathBuf,
 }
 
 fn main() {
@@ -59,6 +63,8 @@ fn main() {
             grass_transition_meta: workspace_root.join(GRASS_TRANSITION_META),
             water_image: PathBuf::from(WATER_IMAGE),
             water_meta: workspace_root.join(WATER_META),
+            water_transition_image: PathBuf::from(WATER_TRANSITION_IMAGE),
+            water_transition_meta: workspace_root.join(WATER_TRANSITION_META),
         })
         .add_systems(Startup, setup)
         .add_systems(Update, camera_pan)
@@ -105,6 +111,13 @@ fn setup(
             return;
         }
     };
+    let water_transition_meta = match load_tilesheet_metadata(&paths.water_transition_meta) {
+        Ok(data) => data,
+        Err(err) => {
+            eprintln!("Failed to load water transition metadata: {err}");
+            return;
+        }
+    };
 
     let grass_texture: Handle<Image> =
         asset_server.load(paths.grass_image.to_string_lossy().to_string());
@@ -114,6 +127,8 @@ fn setup(
         asset_server.load(paths.grass_transition_image.to_string_lossy().to_string());
     let water_texture: Handle<Image> =
         asset_server.load(paths.water_image.to_string_lossy().to_string());
+    let water_transition_texture: Handle<Image> =
+        asset_server.load(paths.water_transition_image.to_string_lossy().to_string());
 
     let map_size = TilemapSize {
         x: MAP_WIDTH,
@@ -140,6 +155,7 @@ fn setup(
         &grass_meta,
         &dirt_meta,
         &water_meta,
+        &water_transition_meta,
         &transition_meta,
         &mut rng,
     );
@@ -152,6 +168,8 @@ fn setup(
     let transition_entity = commands.spawn_empty().id();
     let mut water_storage = TileStorage::empty(map_size);
     let water_entity = commands.spawn_empty().id();
+    let mut water_transition_storage = TileStorage::empty(map_size);
+    let water_transition_entity = commands.spawn_empty().id();
 
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
@@ -200,6 +218,17 @@ fn setup(
                     })
                     .id();
                 water_storage.set(&tile_pos, tile_entity);
+            }
+            if let Some(index) = layers.water_transition[idx] {
+                let tile_entity = commands
+                    .spawn(TileBundle {
+                        position: tile_pos,
+                        tilemap_id: TilemapId(water_transition_entity),
+                        texture_index: TileTextureIndex(index),
+                        ..Default::default()
+                    })
+                    .id();
+                water_transition_storage.set(&tile_pos, tile_entity);
             }
         }
     }
@@ -252,6 +281,19 @@ fn setup(
         tile_size,
         map_type,
         transform: water_transform,
+        ..Default::default()
+    });
+    let mut water_transition_transform =
+        get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+    water_transition_transform.translation.z = 0.3;
+    commands.entity(water_transition_entity).insert(TilemapBundle {
+        grid_size,
+        size: map_size,
+        storage: water_transition_storage,
+        texture: TilemapTexture::Single(water_transition_texture),
+        tile_size,
+        map_type,
+        transform: water_transition_transform,
         ..Default::default()
     });
 }
