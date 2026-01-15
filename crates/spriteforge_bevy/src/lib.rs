@@ -127,52 +127,7 @@ fn adjacent_grass_angles(
     height: u32,
     tiles: &[BaseTile],
 ) -> Vec<f32> {
-    let mut angles = Vec::new();
-    let north = y > 0 && tiles[((y - 1) * width + x) as usize] == BaseTile::Grass;
-    let west = x > 0 && tiles[(y * width + (x - 1)) as usize] == BaseTile::Grass;
-    let south = y + 1 < height && tiles[((y + 1) * width + x) as usize] == BaseTile::Grass;
-    let east = x + 1 < width && tiles[(y * width + (x + 1)) as usize] == BaseTile::Grass;
-
-    // Edge-adjacent (diamond edges).
-    // North -> NE (26.5), West -> NW (153.435), South -> SW (206.565), East -> SE (333.435).
-    if north {
-        angles.push(206.565);
-    }
-    if west {
-        angles.push(153.435);
-    }
-    if south {
-        angles.push(26.5);
-    }
-    if east {
-        angles.push(333.435);
-    }
-
-    if !angles.is_empty() {
-        return angles;
-    }
-
-    // Point-adjacent (diamond corners). These are diagonal neighbors in grid space.
-    // East point (0) -> (x+1, y-1), North point (90) -> (x-1, y-1),
-    // West point (180) -> (x-1, y+1), South point (270) -> (x+1, y+1).
-    if x + 1 < width && y > 0 && tiles[((y - 1) * width + (x + 1)) as usize] == BaseTile::Grass
-    {
-        angles.push(270.0);
-    }
-    if x > 0 && y > 0 && tiles[((y - 1) * width + (x - 1)) as usize] == BaseTile::Grass {
-        angles.push(180.0);
-    }
-    if x > 0 && y + 1 < height
-        && tiles[((y + 1) * width + (x - 1)) as usize] == BaseTile::Grass
-    {
-        angles.push(90.0);
-    }
-    if x + 1 < width && y + 1 < height
-        && tiles[((y + 1) * width + (x + 1)) as usize] == BaseTile::Grass
-    {
-        angles.push(0.0);
-    }
-    angles
+    adjacent_angles(x, y, width, height, tiles, |tile| tile == BaseTile::Grass)
 }
 
 fn adjacent_non_water_angles(
@@ -182,11 +137,25 @@ fn adjacent_non_water_angles(
     height: u32,
     tiles: &[BaseTile],
 ) -> Vec<f32> {
+    adjacent_angles(x, y, width, height, tiles, |tile| tile != BaseTile::Water)
+}
+
+fn adjacent_angles<F>(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    tiles: &[BaseTile],
+    mut is_match: F,
+) -> Vec<f32>
+where
+    F: FnMut(BaseTile) -> bool,
+{
     let mut angles = Vec::new();
-    let north = y > 0 && tiles[((y - 1) * width + x) as usize] != BaseTile::Water;
-    let west = x > 0 && tiles[(y * width + (x - 1)) as usize] != BaseTile::Water;
-    let south = y + 1 < height && tiles[((y + 1) * width + x) as usize] != BaseTile::Water;
-    let east = x + 1 < width && tiles[(y * width + (x + 1)) as usize] != BaseTile::Water;
+    let north = y > 0 && is_match(tiles[((y - 1) * width + x) as usize]);
+    let west = x > 0 && is_match(tiles[(y * width + (x - 1)) as usize]);
+    let south = y + 1 < height && is_match(tiles[((y + 1) * width + x) as usize]);
+    let east = x + 1 < width && is_match(tiles[(y * width + (x + 1)) as usize]);
 
     // Edge-adjacent (diamond edges).
     // North -> NE (26.5), West -> NW (153.435), South -> SW (206.565), East -> SE (333.435).
@@ -210,20 +179,20 @@ fn adjacent_non_water_angles(
     // Point-adjacent (diamond corners). These are diagonal neighbors in grid space.
     // East point (0) -> (x+1, y-1), North point (90) -> (x-1, y-1),
     // West point (180) -> (x-1, y+1), South point (270) -> (x+1, y+1).
-    if x + 1 < width && y > 0 && tiles[((y - 1) * width + (x + 1)) as usize] != BaseTile::Water
+    if x + 1 < width && y > 0 && is_match(tiles[((y - 1) * width + (x + 1)) as usize])
     {
         angles.push(270.0);
     }
-    if x > 0 && y > 0 && tiles[((y - 1) * width + (x - 1)) as usize] != BaseTile::Water {
+    if x > 0 && y > 0 && is_match(tiles[((y - 1) * width + (x - 1)) as usize]) {
         angles.push(180.0);
     }
     if x > 0 && y + 1 < height
-        && tiles[((y + 1) * width + (x - 1)) as usize] != BaseTile::Water
+        && is_match(tiles[((y + 1) * width + (x - 1)) as usize])
     {
         angles.push(90.0);
     }
     if x + 1 < width && y + 1 < height
-        && tiles[((y + 1) * width + (x + 1)) as usize] != BaseTile::Water
+        && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
     {
         angles.push(0.0);
     }

@@ -27,6 +27,7 @@ pub fn render_water_transition_tile(
     bg: Rgba<u8>,
     config: &TileConfig,
     angles_override: Option<&Vec<f32>>,
+    overrides: Option<&crate::config::TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "water_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
@@ -42,7 +43,12 @@ pub fn render_water_transition_tile(
         .or_else(|| config.transition_angles.clone())
         .or_else(|| config.transition_angle.map(|angle| vec![angle]))
         .unwrap_or_else(|| vec![333.435]);
-    let cutoff = config.water_edge_cutoff.unwrap_or(0.78).clamp(0.0, 1.0);
+    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.78).clamp(0.0, 1.0);
+    if let Some(overrides) = overrides {
+        if let Some(override_cutoff) = overrides.water_edge_cutoff {
+            cutoff = override_cutoff.clamp(0.0, 1.0);
+        }
+    }
 
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     draw_isometric_ground(&mut img, size, water);
@@ -60,6 +66,7 @@ pub fn render_water_transition_mask_tile(
     size: u32,
     config: &TileConfig,
     angles_override: Option<&Vec<f32>>,
+    overrides: Option<&crate::config::TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "water_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
@@ -69,7 +76,12 @@ pub fn render_water_transition_mask_tile(
         .or_else(|| config.transition_angles.clone())
         .or_else(|| config.transition_angle.map(|angle| vec![angle]))
         .unwrap_or_else(|| vec![333.435]);
-    let cutoff = config.water_edge_cutoff.unwrap_or(0.78).clamp(0.0, 1.0);
+    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.78).clamp(0.0, 1.0);
+    if let Some(overrides) = overrides {
+        if let Some(override_cutoff) = overrides.water_edge_cutoff {
+            cutoff = override_cutoff.clamp(0.0, 1.0);
+        }
+    }
     let mut tile = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
     draw_isometric_ground(&mut tile, size, Rgba([255, 255, 255, 255]));
     apply_edge_cutout(&mut tile, &angles, cutoff);

@@ -58,7 +58,8 @@ pub fn render_tilesheet_mask(
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, entry) in entries.iter().enumerate() {
-        let mask_tile = render_tile_mask(size, config, entry.angles.as_ref())?;
+        let mask_tile =
+            render_tile_mask(size, config, entry.angles.as_ref(), Some(&entry.overrides))?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
         let x = (col * size + padding * col) as i32;
@@ -73,10 +74,13 @@ fn render_tile_mask(
     size: u32,
     config: &TileConfig,
     angles_override: Option<&Vec<f32>>,
+    overrides: Option<&TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
         "water" => Ok(water::render_water_mask_tile(size)),
-        "water_transition" => water::render_water_transition_mask_tile(size, config, angles_override),
+        "water_transition" => {
+            water::render_water_transition_mask_tile(size, config, angles_override, overrides)
+        }
         other => Err(format!("No mask renderer for tile name: {other}")),
     }
 }
@@ -101,7 +105,9 @@ pub fn render_tile(
             overrides,
         ),
         "water" => water::render_water_tile(size, bg, config),
-        "water_transition" => water::render_water_transition_tile(size, bg, config, angles_override),
+        "water_transition" => {
+            water::render_water_transition_tile(size, bg, config, angles_override, overrides)
+        }
         "debug_weight" => debug_weight::render_weight_debug_tile(size, bg, config, angles_override),
         other => Err(format!("Unknown tile name: {other}")),
     }

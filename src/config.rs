@@ -53,6 +53,7 @@ pub struct TilesheetVariant {
     pub density: Option<f32>,
     pub bias: Option<f32>,
     pub falloff: Option<f32>,
+    pub water_edge_cutoff: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +68,7 @@ pub struct TransitionOverrides {
     pub density: Option<f32>,
     pub bias: Option<f32>,
     pub falloff: Option<f32>,
+    pub water_edge_cutoff: Option<f32>,
 }
 
 pub fn load_config(path: &Path) -> Result<ConfigFile, String> {
@@ -97,6 +99,7 @@ pub fn tilesheet_entries(sheet: &TilesheetConfig) -> Result<Vec<TilesheetEntry>,
                     density: variant.density,
                     bias: variant.bias,
                     falloff: variant.falloff,
+                    water_edge_cutoff: variant.water_edge_cutoff,
                 },
             })
             .collect());
