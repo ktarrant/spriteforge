@@ -1,7 +1,7 @@
 use image::{ImageBuffer, Rgba};
 
 use crate::config::TileConfig;
-use crate::render::util::{draw_isometric_ground, edge_weight_for_angles, parse_hex_color};
+use crate::render::util::{draw_isometric_ground, parse_hex_color};
 
 pub fn render_water_tile(
     size: u32,
@@ -52,7 +52,9 @@ pub fn render_water_transition_tile(
 
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     draw_isometric_ground(&mut img, size, water);
-    apply_edge_cutout(&mut img, &angles, cutoff);
+    for angle in &angles {
+        apply_edge_cutout(&mut img, *angle, cutoff);
+    }
     Ok(img)
 }
 
@@ -84,25 +86,51 @@ pub fn render_water_transition_mask_tile(
     }
     let mut tile = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
     draw_isometric_ground(&mut tile, size, Rgba([255, 255, 255, 255]));
-    apply_edge_cutout(&mut tile, &angles, cutoff);
+    for angle in &angles {
+        apply_edge_cutout(&mut tile, *angle, cutoff);
+    }
     Ok(tile)
 }
 
 fn apply_edge_cutout(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-    angles: &[f32],
+    angle: f32,
     cutoff: f32,
 ) {
     let w = img.width().max(1) as f32;
     let h = img.height().max(1) as f32;
+    let cutoff_a = |xf: f32| 0.75 - (1.0 - xf - cutoff) * 0.5;
+    let cutoff_b = |xf: f32| 0.75 - (xf - cutoff) * 0.5;
+    let cutoff_c = |xf: f32| 0.75 + (xf - cutoff) * 0.5;
+    let cutoff_d = |xf: f32| 0.75 + (1.0 - xf - cutoff) * 0.5;
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         if pixel.0[3] == 0 {
             continue;
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-        let weight = edge_weight_for_angles(angles, xf, yf);
-        if weight >= cutoff {
+
+        let should_cutout = if (angle - 26.5).abs() < 0.01 {
+            yf <= cutoff_a(xf)
+        } else if (angle - 153.435).abs() < 0.01 {
+            yf <= cutoff_b(xf)
+        } else if (angle - 206.565).abs() < 0.01 {
+            yf >= cutoff_c(xf)
+        } else if (angle - 333.435).abs() < 0.01 {
+            yf >= cutoff_d(xf)
+        } else if angle.abs() < 0.01 {
+            xf >= 1.0 - cutoff
+        } else if (angle - 90.0).abs() < 0.01 {
+            yf <= 0.5 + cutoff / 2.0
+        } else if (angle - 180.0).abs() < 0.01 {
+            xf <= cutoff
+        } else if (angle - 270.0).abs() < 0.01 {
+            yf >= 1.0 - cutoff / 2.0
+        } else {
+            false
+        };
+
+        if should_cutout {
             *pixel = Rgba([0, 0, 0, 0]);
         }
     }
