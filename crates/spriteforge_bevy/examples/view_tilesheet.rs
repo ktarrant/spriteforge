@@ -2,9 +2,9 @@ use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
 use bevy_ecs_tilemap::helpers::geometry::get_tilemap_center_transform;
 use bevy_ecs_tilemap::prelude::*;
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 use rand::rngs::StdRng;
-use spriteforge_bevy::{build_render_layers, load_tilesheet_metadata, BaseTile};
+use spriteforge_bevy::{build_render_layers, load_tilesheet_metadata, BaseTile, TilesheetMetadata};
 use std::path::PathBuf;
 
 const GRASS_IMAGE: &str = "out/tilesheet/grass.png";
@@ -39,6 +39,32 @@ struct TilesheetPaths {
     water_transition_meta: PathBuf,
 }
 
+#[derive(Resource)]
+struct MapAssets {
+    grass_meta: TilesheetMetadata,
+    dirt_meta: TilesheetMetadata,
+    transition_meta: TilesheetMetadata,
+    water_meta: TilesheetMetadata,
+    water_transition_meta: TilesheetMetadata,
+    grass_texture: Handle<Image>,
+    dirt_texture: Handle<Image>,
+    transition_texture: Handle<Image>,
+    water_texture: Handle<Image>,
+    water_transition_texture: Handle<Image>,
+    map_size: TilemapSize,
+    tile_size: TilemapTileSize,
+    grid_size: TilemapGridSize,
+}
+
+#[derive(Resource, Default)]
+struct MapEntities {
+    tilemaps: Vec<Entity>,
+    tiles: Vec<Entity>,
+}
+
+#[derive(Resource)]
+struct MapSeed(u64);
+
 fn main() {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -67,7 +93,7 @@ fn main() {
             water_transition_meta: workspace_root.join(WATER_TRANSITION_META),
         })
         .add_systems(Startup, setup)
-        .add_systems(Update, camera_pan)
+        .add_systems(Update, (camera_pan, regenerate_map_on_space))
         .run();
 }
 
@@ -142,8 +168,30 @@ fn setup(
         x: grass_meta.tile_size as f32,
         y: (grass_meta.tile_size as f32) * 0.5,
     };
+    let assets = MapAssets {
+        grass_meta,
+        dirt_meta,
+        transition_meta,
+        water_meta,
+        water_transition_meta,
+        grass_texture,
+        dirt_texture,
+        transition_texture,
+        water_texture,
+        water_transition_texture,
+        map_size,
+        tile_size,
+        grid_size,
+    };
+    let seed = 1337;
+    let entities = spawn_map(&mut commands, &assets, seed);
+    commands.insert_resource(assets);
+    commands.insert_resource(MapSeed(seed));
+    commands.insert_resource(entities);
+}
 
-    let mut rng = StdRng::seed_from_u64(1337);
+fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntities {
+    let mut rng = StdRng::seed_from_u64(seed);
     let mut terrain = generate_terrain_map(MAP_WIDTH, MAP_HEIGHT, &mut rng);
     smooth_terrain(&mut terrain, MAP_WIDTH, MAP_HEIGHT, CLUMP_PASSES);
     reduce_water_islands(&mut terrain, MAP_WIDTH, MAP_HEIGHT, WATER_PASS_PASSES);
@@ -152,25 +200,25 @@ fn setup(
         &base_tiles,
         MAP_WIDTH,
         MAP_HEIGHT,
-        &grass_meta,
-        &dirt_meta,
-        &water_meta,
-        &water_transition_meta,
-        &transition_meta,
+        &assets.grass_meta,
+        &assets.dirt_meta,
+        &assets.water_meta,
+        &assets.water_transition_meta,
+        &assets.transition_meta,
         &mut rng,
     );
-
-    let mut grass_storage = TileStorage::empty(map_size);
+    let mut grass_storage = TileStorage::empty(assets.map_size);
     let grass_entity = commands.spawn_empty().id();
-    let mut dirt_storage = TileStorage::empty(map_size);
+    let mut dirt_storage = TileStorage::empty(assets.map_size);
     let dirt_entity = commands.spawn_empty().id();
-    let mut transition_storage = TileStorage::empty(map_size);
+    let mut transition_storage = TileStorage::empty(assets.map_size);
     let transition_entity = commands.spawn_empty().id();
-    let mut water_storage = TileStorage::empty(map_size);
+    let mut water_storage = TileStorage::empty(assets.map_size);
     let water_entity = commands.spawn_empty().id();
-    let mut water_transition_storage = TileStorage::empty(map_size);
+    let mut water_transition_storage = TileStorage::empty(assets.map_size);
     let water_transition_entity = commands.spawn_empty().id();
 
+    let mut tiles = Vec::new();
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
             let tile_pos = TilePos { x, y };
@@ -185,6 +233,7 @@ fn setup(
                     })
                     .id();
                 grass_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
             }
             if let Some(index) = layers.dirt[idx] {
                 let tile_entity = commands
@@ -196,6 +245,7 @@ fn setup(
                     })
                     .id();
                 dirt_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
             }
             if let Some(index) = layers.transition[idx] {
                 let tile_entity = commands
@@ -207,6 +257,7 @@ fn setup(
                     })
                     .id();
                 transition_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
             }
             if let Some(index) = layers.water[idx] {
                 let tile_entity = commands
@@ -218,6 +269,7 @@ fn setup(
                     })
                     .id();
                 water_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
             }
             if let Some(index) = layers.water_transition[idx] {
                 let tile_entity = commands
@@ -229,73 +281,91 @@ fn setup(
                     })
                     .id();
                 water_transition_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
             }
         }
     }
 
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut grass_transform = get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+    let mut grass_transform =
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     grass_transform.translation.z = 1.0;
     commands.entity(grass_entity).insert(TilemapBundle {
-        grid_size,
-        size: map_size,
+        grid_size: assets.grid_size,
+        size: assets.map_size,
         storage: grass_storage,
-        texture: TilemapTexture::Single(grass_texture),
-        tile_size,
+        texture: TilemapTexture::Single(assets.grass_texture.clone()),
+        tile_size: assets.tile_size,
         map_type,
         transform: grass_transform,
         ..Default::default()
     });
-    let dirt_transform = get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
+    let dirt_transform =
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     commands.entity(dirt_entity).insert(TilemapBundle {
-        grid_size,
-        size: map_size,
+        grid_size: assets.grid_size,
+        size: assets.map_size,
         storage: dirt_storage,
-        texture: TilemapTexture::Single(dirt_texture),
-        tile_size,
+        texture: TilemapTexture::Single(assets.dirt_texture.clone()),
+        tile_size: assets.tile_size,
         map_type,
         transform: dirt_transform,
         ..Default::default()
     });
+    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
     let mut transition_transform =
-        get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     transition_transform.translation.z = 0.5;
     commands.entity(transition_entity).insert(TilemapBundle {
-        grid_size,
-        size: map_size,
+        grid_size: assets.grid_size,
+        size: assets.map_size,
         storage: transition_storage,
-        texture: TilemapTexture::Single(transition_texture),
-        tile_size,
+        texture: TilemapTexture::Single(assets.transition_texture.clone()),
+        tile_size: assets.tile_size,
         map_type,
         transform: transition_transform,
         ..Default::default()
     });
+    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
     let mut water_transform =
-        get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     water_transform.translation.z = 0.2;
     commands.entity(water_entity).insert(TilemapBundle {
-        grid_size,
-        size: map_size,
+        grid_size: assets.grid_size,
+        size: assets.map_size,
         storage: water_storage,
-        texture: TilemapTexture::Single(water_texture),
-        tile_size,
+        texture: TilemapTexture::Single(assets.water_texture.clone()),
+        tile_size: assets.tile_size,
         map_type,
         transform: water_transform,
         ..Default::default()
     });
+    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
     let mut water_transition_transform =
-        get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0);
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     water_transition_transform.translation.z = 0.3;
     commands.entity(water_transition_entity).insert(TilemapBundle {
-        grid_size,
-        size: map_size,
+        grid_size: assets.grid_size,
+        size: assets.map_size,
         storage: water_transition_storage,
-        texture: TilemapTexture::Single(water_transition_texture),
-        tile_size,
+        texture: TilemapTexture::Single(assets.water_transition_texture.clone()),
+        tile_size: assets.tile_size,
         map_type,
         transform: water_transition_transform,
         ..Default::default()
     });
+
+    MapEntities {
+        tilemaps: vec![
+            grass_entity,
+            dirt_entity,
+            transition_entity,
+            water_entity,
+            water_transition_entity,
+        ],
+        tiles,
+    }
 }
 
 fn camera_pan(
@@ -324,6 +394,29 @@ fn camera_pan(
         transform.translation.x += delta.x;
         transform.translation.y += delta.y;
     }
+}
+
+fn regenerate_map_on_space(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    assets: Res<MapAssets>,
+    mut seed: ResMut<MapSeed>,
+    mut entities: ResMut<MapEntities>,
+) {
+    if !keys.just_pressed(KeyCode::Space) {
+        return;
+    }
+
+    for entity in entities.tiles.drain(..) {
+        commands.entity(entity).despawn();
+    }
+    for entity in entities.tilemaps.drain(..) {
+        commands.entity(entity).despawn();
+    }
+
+    let mut seed_rng = StdRng::seed_from_u64(seed.0);
+    seed.0 = seed_rng.next_u64();
+    *entities = spawn_map(&mut commands, &assets, seed.0);
 }
 
 fn generate_terrain_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
