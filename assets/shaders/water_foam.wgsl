@@ -19,11 +19,9 @@ var<uniform> params: WaterFoamParams;
 @fragment
 fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
     let base = process_fragment(in);
-    let freq = params.foam_settings.y;
-    let lx = in.uv.z;
-    let ly = in.uv.w * 2.0;
-    let wave = sin(lx * freq + tilemap_data.time)
-        * sin(ly * freq + tilemap_data.time);
-    let shimmer = wave * params.foam_settings.x;
-    return vec4<f32>(base.rgb + shimmer, base.a);
+    let tile_pos = vec2<f32>(in.storage_position);
+    let lx = tile_pos.x + in.uv.z;
+    let ly = (tile_pos.y + in.uv.w) * 2.0;
+    let gray = fract((lx + ly) * 0.5);
+    return vec4<f32>(gray, gray, gray, base.a);
 }
