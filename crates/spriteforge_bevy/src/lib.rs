@@ -172,7 +172,7 @@ where
         angles.push(333.435);
     }
 
-    if !angles.is_empty() {
+    if angles.len() > 2 {
         return angles;
     }
 
@@ -181,20 +181,28 @@ where
     // West point (180) -> (x-1, y+1), South point (270) -> (x+1, y+1).
     if x + 1 < width && y > 0 && is_match(tiles[((y - 1) * width + (x + 1)) as usize])
     {
-        angles.push(270.0);
+        if !north && !east {
+            angles.push(270.0);
+        }
     }
     if x > 0 && y > 0 && is_match(tiles[((y - 1) * width + (x - 1)) as usize]) {
-        angles.push(180.0);
+        if !north && !west {
+            angles.push(180.0);
+        }
     }
     if x > 0 && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x - 1)) as usize])
     {
-        angles.push(90.0);
+        if !west && !south {
+            angles.push(90.0);
+        }
     }
     if x + 1 < width && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
     {
-        angles.push(0.0);
+        if !south && !east {
+            angles.push(0.0);
+        }
     }
     angles
 }
