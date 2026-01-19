@@ -1,5 +1,7 @@
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
+use bevy::render::render_resource::{AsBindGroup, ShaderRef, ShaderType};
+use bevy::reflect::TypePath;
 use bevy_ecs_tilemap::helpers::geometry::get_tilemap_center_transform;
 use bevy_ecs_tilemap::prelude::*;
 use rand::{Rng, RngCore, SeedableRng};
@@ -17,6 +19,8 @@ const WATER_IMAGE: &str = "out/tilesheet/water.png";
 const WATER_META: &str = "out/tilesheet/water.json";
 const WATER_TRANSITION_IMAGE: &str = "out/tilesheet/water_transition.png";
 const WATER_TRANSITION_META: &str = "out/tilesheet/water_transition.json";
+const WATER_MASK_IMAGE: &str = "out/tilesheet/water_mask.png";
+const WATER_TRANSITION_MASK_IMAGE: &str = "out/tilesheet/water_transition_mask.png";
 const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const CLUMP_PASSES: usize = 3;
@@ -37,6 +41,30 @@ struct TilesheetPaths {
     water_meta: PathBuf,
     water_transition_image: PathBuf,
     water_transition_meta: PathBuf,
+    water_mask_image: PathBuf,
+    water_transition_mask_image: PathBuf,
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
+struct WaterFoamMaterial {
+    #[texture(0)]
+    #[sampler(1)]
+    mask_texture: Handle<Image>,
+    #[uniform(2)]
+    params: WaterFoamParams,
+}
+
+#[derive(Clone, Copy, Debug, Default, ShaderType)]
+#[allow(dead_code)]
+struct WaterFoamParams {
+    foam_color: Vec4,
+    foam_settings: Vec4,
+}
+
+impl MaterialTilemap for WaterFoamMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "assets/shaders/water_foam.wgsl".into()
+    }
 }
 
 #[derive(Resource)]
@@ -51,6 +79,8 @@ struct MapAssets {
     transition_texture: Handle<Image>,
     water_texture: Handle<Image>,
     water_transition_texture: Handle<Image>,
+    water_material: Handle<WaterFoamMaterial>,
+    water_transition_material: Handle<WaterFoamMaterial>,
     map_size: TilemapSize,
     tile_size: TilemapTileSize,
     grid_size: TilemapGridSize,
@@ -80,6 +110,7 @@ fn main() {
                 }),
         )
         .add_plugins(TilemapPlugin)
+        .add_plugins(MaterialTilemapPlugin::<WaterFoamMaterial>::default())
         .insert_resource(TilesheetPaths {
             grass_image: PathBuf::from(GRASS_IMAGE),
             grass_meta: workspace_root.join(GRASS_META),
@@ -91,6 +122,8 @@ fn main() {
             water_meta: workspace_root.join(WATER_META),
             water_transition_image: PathBuf::from(WATER_TRANSITION_IMAGE),
             water_transition_meta: workspace_root.join(WATER_TRANSITION_META),
+            water_mask_image: PathBuf::from(WATER_MASK_IMAGE),
+            water_transition_mask_image: PathBuf::from(WATER_TRANSITION_MASK_IMAGE),
         })
         .add_systems(Startup, setup)
         .add_systems(Update, (camera_pan, regenerate_map_on_space))
@@ -100,6 +133,7 @@ fn main() {
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<WaterFoamMaterial>>,
     paths: Res<TilesheetPaths>,
 ) {
     let mut camera = Camera2dBundle::default();
@@ -155,6 +189,10 @@ fn setup(
         asset_server.load(paths.water_image.to_string_lossy().to_string());
     let water_transition_texture: Handle<Image> =
         asset_server.load(paths.water_transition_image.to_string_lossy().to_string());
+    let water_mask_texture: Handle<Image> =
+        asset_server.load(paths.water_mask_image.to_string_lossy().to_string());
+    let water_transition_mask_texture: Handle<Image> =
+        asset_server.load(paths.water_transition_mask_image.to_string_lossy().to_string());
 
     let map_size = TilemapSize {
         x: MAP_WIDTH,
@@ -168,6 +206,13 @@ fn setup(
         x: grass_meta.tile_size as f32,
         y: (grass_meta.tile_size as f32) * 0.5,
     };
+    let water_material = materials.add(WaterFoamMaterial {
+        mask_texture: water_transition_mask_texture.clone(),
+        params: WaterFoamParams {
+            foam_color: Vec4::new(0.28, 0.0, 0.0, 0.0),
+            foam_settings: Vec4::new(0.12, 2.0, 1.8, 0.0),
+        },
+    });
     let assets = MapAssets {
         grass_meta,
         dirt_meta,
@@ -179,6 +224,8 @@ fn setup(
         transition_texture,
         water_texture,
         water_transition_texture,
+        water_material: water_material.clone(),
+        water_transition_material: water_material,
         map_size,
         tile_size,
         grid_size,
@@ -331,7 +378,7 @@ fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntit
     let mut water_transform =
         get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     water_transform.translation.z = 0.2;
-    commands.entity(water_entity).insert(TilemapBundle {
+    commands.entity(water_entity).insert(MaterialTilemapBundle {
         grid_size: assets.grid_size,
         size: assets.map_size,
         storage: water_storage,
@@ -339,13 +386,16 @@ fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntit
         tile_size: assets.tile_size,
         map_type,
         transform: water_transform,
+        material: assets.water_material.clone(),
         ..Default::default()
     });
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
     let mut water_transition_transform =
         get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     water_transition_transform.translation.z = 0.3;
-    commands.entity(water_transition_entity).insert(TilemapBundle {
+    commands
+        .entity(water_transition_entity)
+        .insert(MaterialTilemapBundle {
         grid_size: assets.grid_size,
         size: assets.map_size,
         storage: water_transition_storage,
@@ -353,6 +403,7 @@ fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntit
         tile_size: assets.tile_size,
         map_type,
         transform: water_transition_transform,
+        material: assets.water_transition_material.clone(),
         ..Default::default()
     });
 
