@@ -210,7 +210,7 @@ fn setup(
         mask_texture: water_transition_mask_texture.clone(),
         params: WaterFoamParams {
             foam_color: Vec4::new(0.28, 0.0, 0.0, 0.0),
-            foam_settings: Vec4::new(0.12, 2.0, 1.8, 0.0),
+            foam_settings: Vec4::new(0.06, 20.0, 1.8, 0.0),
         },
     });
     let assets = MapAssets {
