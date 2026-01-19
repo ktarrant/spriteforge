@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug view_tilesheet",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": [
+          "build",
+          "-p",
+          "spriteforge_bevy",
+          "--example",
+          "view_tilesheet"
+        ]
+      },
+      "program": "${workspaceFolder}/target/debug/examples/view_tilesheet",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}
