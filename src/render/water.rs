@@ -43,7 +43,7 @@ pub fn render_water_transition_tile(
         .or_else(|| config.transition_angles.clone())
         .or_else(|| config.transition_angle.map(|angle| vec![angle]))
         .unwrap_or_else(|| vec![333.435]);
-    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.78).clamp(0.0, 1.0);
+    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {
             cutoff = override_cutoff.clamp(0.0, 1.0);
@@ -76,7 +76,7 @@ pub fn render_water_transition_mask_tile(
         .or_else(|| config.transition_angles.clone())
         .or_else(|| config.transition_angle.map(|angle| vec![angle]))
         .unwrap_or_else(|| vec![333.435]);
-    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.78).clamp(0.0, 1.0);
+    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {
             cutoff = override_cutoff.clamp(0.0, 1.0);
@@ -122,35 +122,35 @@ fn apply_edge_cutout(
             || (angles_lookup[5] && yf >= cutoff_c(xf))
             || (angles_lookup[7] && yf >= cutoff_d(xf))
             || (angles_lookup[0] && {
-                    let cx = 1.0 - cutoff * 0.75;
+                    let cx = 1.0 - cutoff * 0.25;
                     let cy = 0.75;
                     let dx = xf - cx;
                     let dy = yf - cy;
-                    let radius = cutoff * 0.5;
+                    let radius = cutoff * 0.4;
                     (dx * dx + dy * dy <= radius * radius) || (xf > cx)
                 })
             || (angles_lookup[2] && {
                     let cx = 0.5;
-                    let cy = 0.5 - cutoff * 2.0;
+                    let cy = 0.5 - cutoff * 0.6;
                     let dx = xf - cx;
                     let dy = yf - cy;
-                    let radius = cutoff * 2.7;
+                    let radius = cutoff;
                     (dx * dx + dy * dy <= radius * radius) || (yf < cy)
                 })
             || (angles_lookup[4] && {
-                    let cx = cutoff * 0.75;
+                    let cx = cutoff * 0.25;
                     let cy = 0.75;
                     let dx = xf - cx;
                     let dy = yf - cy;
-                    let radius = cutoff * 0.5;
+                    let radius = cutoff * 0.4;
                     (dx * dx + dy * dy <= radius * radius) || (xf < cx)
                 })
             || (angles_lookup[6] && {
                     let cx = 0.5;
-                    let cy = 1.0 + cutoff * 2.0;
+                    let cy = 1.0 + cutoff * 0.6;
                     let dx = xf - cx;
                     let dy = yf - cy;
-                    let radius = cutoff * 2.7;
+                    let radius = cutoff;
                     (dx * dx + dy * dy <= radius * radius) || (yf > cy)
                 })
             || (angles_lookup[1]
