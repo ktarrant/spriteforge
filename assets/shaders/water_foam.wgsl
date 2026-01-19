@@ -26,7 +26,8 @@ fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
     let ly = (tile_pos.y + in.uv.w) * 2.0;
     let freq = params.foam_settings.y;
     let phase = tilemap_data.time * params.foam_settings.z;
-    let wave = sin((lx * freq + phase) * TAU) * sin((ly * freq + phase) * TAU);
-    let shimmer = wave * params.foam_settings.x;
+    let bob = sin(phase * TAU) * 0.2;
+    let wave = sin((lx * freq + phase) * TAU) * sin(((ly + bob) * freq + phase) * TAU);
+    let shimmer = clamp(wave, 0.0, 1.0) * params.foam_settings.x;
     return vec4<f32>(base.rgb + shimmer, base.a);
 }
