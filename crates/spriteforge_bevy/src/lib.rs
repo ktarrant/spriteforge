@@ -74,8 +74,17 @@ pub fn build_render_layers<R: rand::Rng>(
             let idx = (y * width + x) as usize;
             match base_tiles[idx] {
                 BaseTile::Grass => {
-                    let index = rng.gen_range(0..grass_meta.tile_count) as u32;
-                    grass[idx] = Some(index);
+                    let angles = adjacent_non_grass_angles(x, y, width, height, base_tiles);
+                    if !angles.is_empty() {
+                        let index = pick_transition_index(&angles, &transition_lookup, rng)
+                            .unwrap_or_else(|| rng.gen_range(0..dirt_meta.tile_count) as u32);
+                        transition[idx] = Some(index);
+                        let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
+                        dirt[idx] = Some(dirt_index);
+                    } else {
+                        let index = rng.gen_range(0..grass_meta.tile_count) as u32;
+                        grass[idx] = Some(index);
+                    }
                 }
                 BaseTile::Water => {
                     let angles = adjacent_non_water_angles(x, y, width, height, base_tiles);
@@ -92,14 +101,8 @@ pub fn build_render_layers<R: rand::Rng>(
                     }
                 }
                 BaseTile::Dirt => {
-                    let angles = adjacent_grass_angles(x, y, width, height, base_tiles);
                     let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
                     dirt[idx] = Some(dirt_index);
-                    if !angles.is_empty() {
-                        let index = pick_transition_index(&angles, &transition_lookup, rng)
-                            .unwrap_or_else(|| rng.gen_range(0..dirt_meta.tile_count) as u32);
-                        transition[idx] = Some(index);
-                    }
                 }
             }
             if water_transition[idx].is_some() && dirt[idx].is_none() {
@@ -120,16 +123,6 @@ pub fn build_render_layers<R: rand::Rng>(
     }
 }
 
-fn adjacent_grass_angles(
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-    tiles: &[BaseTile],
-) -> Vec<f32> {
-    adjacent_angles(x, y, width, height, tiles, |tile| tile == BaseTile::Grass)
-}
-
 fn adjacent_non_water_angles(
     x: u32,
     y: u32,
@@ -138,6 +131,16 @@ fn adjacent_non_water_angles(
     tiles: &[BaseTile],
 ) -> Vec<f32> {
     adjacent_angles(x, y, width, height, tiles, |tile| tile != BaseTile::Water)
+}
+
+fn adjacent_non_grass_angles(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    tiles: &[BaseTile],
+) -> Vec<f32> {
+    adjacent_angles(x, y, width, height, tiles, |tile| tile != BaseTile::Grass)
 }
 
 fn adjacent_angles<F>(

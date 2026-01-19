@@ -50,9 +50,9 @@ pub fn draw_isometric_ground(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, size: u32
 }
 
 pub fn edge_weight_for_angles(angles_deg: &[f32], xf: f32, yf: f32) -> f32 {
-    let mut best: f32 = 0.0;
+    let mut best: f32 = 1.0;
     for &angle in angles_deg {
-        best = best.max(edge_weight_for_angle(angle, xf, yf));
+        best = best.min(edge_weight_for_angle(angle, xf, yf));
     }
     best
 }
@@ -72,7 +72,7 @@ pub fn edge_weight_for_angle(angle_deg: f32, xf: f32, yf: f32) -> f32 {
     let ny = a.sin();
 
     // Signed coordinate along gradient direction
-    let s = dx * nx + dy * ny * 2.0;
+    let s = -(dx * nx + dy * ny * 2.0);
 
     // Normalize: in normalized space, s is typically within about [-1,1]
     // Clamp makes it safe even if corners exceed slightly due to aspect.
