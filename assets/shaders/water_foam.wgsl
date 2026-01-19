@@ -7,6 +7,8 @@ struct WaterFoamParams {
     foam_settings: vec4<f32>,
 };
 
+const TAU: f32 = 6.28318530718;
+
 @group(3) @binding(0)
 var mask_texture: texture_2d<f32>;
 
@@ -22,6 +24,9 @@ fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
     let tile_pos = vec2<f32>(in.storage_position);
     let lx = tile_pos.x + in.uv.z;
     let ly = (tile_pos.y + in.uv.w) * 2.0;
-    let gray = fract((lx + ly) * 0.5);
-    return vec4<f32>(gray, gray, gray, base.a);
+    let freq = params.foam_settings.y;
+    let phase = tilemap_data.time * params.foam_settings.z;
+    let wave = sin((lx * freq + phase) * TAU) * sin((ly * freq + phase) * TAU);
+    let shimmer = wave * params.foam_settings.x;
+    return vec4<f32>(base.rgb + shimmer, base.a);
 }
