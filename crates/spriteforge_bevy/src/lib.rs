@@ -213,12 +213,43 @@ fn pick_transition_index<R: rand::Rng>(
     lookup: &std::collections::HashMap<String, Vec<u32>>,
     rng: &mut R,
 ) -> Option<u32> {
-    let key = angles_key(angles);
-    let choices = lookup.get(&key)?;
-    if choices.is_empty() {
+    if lookup.is_empty() {
         return None;
     }
-    Some(choices[rng.gen_range(0..choices.len())])
+
+    let target_keys: std::collections::HashSet<String> = angles_key(angles)
+        .split(',')
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| entry.to_string())
+        .collect();
+
+    let mut best_matches = 0usize;
+    let mut best_choices: Vec<u32> = Vec::new();
+
+    for (key, choices) in lookup {
+        if choices.is_empty() {
+            continue;
+        }
+        let match_count = key
+            .split(',')
+            .filter(|entry| target_keys.contains(*entry))
+            .count();
+        if target_keys.len() < key.split(',').filter(|entry| !entry.is_empty()).count() {
+            continue;
+        }
+        if match_count > best_matches {
+            best_matches = match_count;
+            best_choices.clear();
+            best_choices.extend_from_slice(choices);
+        } else if match_count == best_matches {
+            best_choices.extend_from_slice(choices);
+        }
+    }
+
+    if best_choices.is_empty() || best_matches == 0 {
+        return None;
+    }
+    Some(best_choices[rng.gen_range(0..best_choices.len())])
 }
 
 fn angles_key(angles: &[f32]) -> String {
