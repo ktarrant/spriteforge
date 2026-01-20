@@ -14,6 +14,10 @@ const CAPILLARY_LENGTH_MIN: i32 = 4;
 const CAPILLARY_LENGTH_STEP: i32 = 2;
 const BRANCH_SET_ATTEMPTS: usize = 12;
 const BRANCH_START_ATTEMPTS: usize = 24;
+const POND_RADIUS: i32 = 2;
+const POND_BUFFER: i32 = 1;
+const WATER_PATCH_RADIUS: i32 = 1;
+const WATER_PATCH_CHANCE: f64 = 0.015;
 
 #[derive(Clone, Copy)]
 struct PathPoint {
@@ -34,6 +38,7 @@ struct PathSegment {
 #[derive(Clone, Debug)]
 struct PathSkeleton {
     segments: Vec<PathSegment>,
+    branch_termini: Vec<(i32, i32)>,
 }
 
 #[derive(Clone, Copy)]
@@ -54,13 +59,19 @@ enum Axis {
 
 pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
     let skeleton = generate_path_skeleton(width, height, rng);
-    rasterize_skeleton(width, height, &skeleton)
+    let mut cells = rasterize_skeleton(width, height, &skeleton);
+    apply_ponds(width, height, &skeleton.branch_termini, &mut cells);
+    sprinkle_water(width, height, rng, &mut cells);
+    cells
 }
 
 fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkeleton {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
     if width == 0 || height == 0 {
-        return PathSkeleton { segments: Vec::new() };
+        return PathSkeleton {
+            segments: Vec::new(),
+            branch_termini: Vec::new(),
+        };
     }
 
     let start_x = width.saturating_sub(1);
@@ -76,6 +87,7 @@ fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkel
     let mut path = Vec::new();
     let mut occupied = HashSet::new();
     let mut segments = Vec::new();
+    let mut branch_termini = Vec::new();
 
     let main_segment = carve_path_segment_points(
         start_x as i32,
@@ -142,6 +154,7 @@ fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkel
                 &mut path,
                 &mut occupied,
                 &mut segments,
+                &mut branch_termini,
                 &branch,
                 BRANCH_CLEARANCE,
                 width,
@@ -150,7 +163,10 @@ fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkel
         }
     }
 
-    PathSkeleton { segments }
+    PathSkeleton {
+        segments,
+        branch_termini,
+    }
 }
 
 fn rasterize_skeleton(width: u32, height: u32, skeleton: &PathSkeleton) -> Vec<BaseTile> {
@@ -453,6 +469,7 @@ fn apply_branch(
     path: &mut Vec<PathPoint>,
     occupied: &mut HashSet<(i32, i32)>,
     segments: &mut Vec<PathSegment>,
+    branch_termini: &mut Vec<(i32, i32)>,
     branch: &BranchSpec,
     clearance: i32,
     width: u32,
@@ -479,10 +496,12 @@ fn apply_branch(
         end_x = x;
         end_y = y;
     }
+    branch_termini.push((end_x, end_y));
     grow_capillaries(
         path,
         occupied,
         segments,
+        branch_termini,
         end_x,
         end_y,
         branch.axis,
@@ -605,6 +624,7 @@ fn grow_capillaries(
     path: &mut Vec<PathPoint>,
     occupied: &mut HashSet<(i32, i32)>,
     segments: &mut Vec<PathSegment>,
+    branch_termini: &mut Vec<(i32, i32)>,
     start_x: i32,
     start_y: i32,
     axis: Axis,
@@ -635,7 +655,93 @@ fn grow_capillaries(
             axis: next_axis,
         };
         if branch_fits_allow_start_overlap(&branch, occupied, width, height, clearance) {
-            apply_branch(path, occupied, segments, &branch, clearance, width, height);
+            apply_branch(
+                path,
+                occupied,
+                segments,
+                branch_termini,
+                &branch,
+                clearance,
+                width,
+                height,
+            );
+        }
+    }
+}
+
+fn apply_ponds(
+    width: u32,
+    height: u32,
+    termini: &[(i32, i32)],
+    cells: &mut [BaseTile],
+) {
+    for &(x, y) in termini {
+        if !can_place_pond(width, height, x, y, cells) {
+            continue;
+        }
+        for ny in (y - POND_RADIUS)..=(y + POND_RADIUS) {
+            for nx in (x - POND_RADIUS)..=(x + POND_RADIUS) {
+                if nx < 0 || ny < 0 {
+                    continue;
+                }
+                let nx = nx as u32;
+                let ny = ny as u32;
+                if nx >= width || ny >= height {
+                    continue;
+                }
+                let idx = (ny * width + nx) as usize;
+                if cells[idx] == BaseTile::Grass {
+                    cells[idx] = BaseTile::Water;
+                }
+            }
+        }
+    }
+}
+
+fn can_place_pond(width: u32, height: u32, x: i32, y: i32, cells: &[BaseTile]) -> bool {
+    let check_radius = POND_RADIUS + POND_BUFFER;
+    let max_x = width.saturating_sub(1) as i32;
+    let max_y = height.saturating_sub(1) as i32;
+    for ny in (y - check_radius)..=(y + check_radius) {
+        for nx in (x - check_radius)..=(x + check_radius) {
+            if nx < 0 || ny < 0 || nx > max_x || ny > max_y {
+                return false;
+            }
+            let idx = (ny as u32 * width + nx as u32) as usize;
+            if cells[idx] != BaseTile::Grass {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn sprinkle_water(width: u32, height: u32, rng: &mut StdRng, cells: &mut [BaseTile]) {
+    for y in 0..height {
+        for x in 0..width {
+            if !rng.gen_bool(WATER_PATCH_CHANCE) {
+                continue;
+            }
+            let idx = (y * width + x) as usize;
+            if cells[idx] != BaseTile::Grass {
+                continue;
+            }
+            for ny in (y as i32 - WATER_PATCH_RADIUS)..=(y as i32 + WATER_PATCH_RADIUS) {
+                for nx in (x as i32 - WATER_PATCH_RADIUS)..=(x as i32 + WATER_PATCH_RADIUS) {
+                    if nx < 0 || ny < 0 {
+                        continue;
+                    }
+                    let nx = nx as u32;
+                    let ny = ny as u32;
+                    if nx >= width || ny >= height {
+                        continue;
+                    }
+                    let nidx = (ny * width + nx) as usize;
+                    if cells[nidx] == BaseTile::Grass {
+                        cells[nidx] = BaseTile::Water;
+                    }
+                }
+            }
         }
     }
 }
