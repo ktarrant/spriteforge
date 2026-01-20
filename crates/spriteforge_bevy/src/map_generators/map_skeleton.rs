@@ -54,6 +54,7 @@ pub struct MapAreaConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct MapSkeletonConfig {
     pub entry: MapPointConfig,
+    pub fork: MapPointConfig,
     pub exits: Vec<MapPointConfig>,
     pub areas: Vec<MapAreaConfig>,
 }
@@ -81,26 +82,22 @@ pub fn generate_map_skeleton_with_config(
     let width_i = width as i32;
     let height_i = height as i32;
     let (entry_x, entry_y) = resolve_point(config.entry, width_i, height_i);
-    let (exit_left_x, exit_left_y) = config
+    let (fork_x, fork_y) = resolve_point(config.fork, width_i, height_i);
+    let exit_points: Vec<(i32, i32)> = config
         .exits
-        .get(0)
+        .iter()
         .copied()
         .map(|point| resolve_point(point, width_i, height_i))
-        .unwrap_or((0, height_i / 2));
-    let (exit_right_x, exit_right_y) = config
-        .exits
-        .get(1)
-        .copied()
-        .map(|point| resolve_point(point, width_i, height_i))
-        .unwrap_or((width_i / 2, height_i.saturating_sub(1)));
-
-    let fork_x = width_i / 2;
-    let fork_y = height_i / 2;
+        .collect();
+    let exit_points = if exit_points.is_empty() {
+        vec![(0, height_i / 2)]
+    } else {
+        exit_points
+    };
 
     let mut areas = build_areas(width_i, height_i, rng, &config.areas);
     let mut main_segment = Vec::new();
-    let mut left_segment = Vec::new();
-    let mut right_segment = Vec::new();
+    let mut fork_segments: Vec<Vec<(i32, i32)>> = Vec::new();
 
     for _ in 0..6 {
         let area_occupied = build_area_occupancy(width_i, height_i, &areas);
@@ -120,35 +117,22 @@ pub fn generate_map_skeleton_with_config(
             continue;
         }
         let (fork_px, fork_py) = *main_segment.last().unwrap_or(&(entry_x, entry_y));
-        left_segment = carve_path_segment_points_avoiding(
+        fork_segments = build_fork_segments(
             fork_px,
             fork_py,
-            exit_left_x,
-            exit_left_y,
+            &exit_points,
             width,
             height,
             rng,
             &area_occupied,
-            (-1, 0),
         );
-        right_segment = carve_path_segment_points_avoiding(
-            fork_px,
-            fork_py,
-            exit_right_x,
-            exit_right_y,
-            width,
-            height,
-            rng,
-            &area_occupied,
-            (0, 1),
-        );
-        if !left_segment.is_empty() && !right_segment.is_empty() {
+        if fork_segments.iter().all(|segment| !segment.is_empty()) {
             break;
         }
         shrink_areas(&mut areas);
     }
 
-    if main_segment.is_empty() || left_segment.is_empty() || right_segment.is_empty() {
+    if main_segment.is_empty() || fork_segments.iter().any(|segment| segment.is_empty()) {
         areas.clear();
         let area_occupied = build_area_occupancy(width_i, height_i, &areas);
         main_segment = carve_path_segment_points_avoiding(
@@ -163,34 +147,22 @@ pub fn generate_map_skeleton_with_config(
             (0, 0),
         );
         let (fork_px, fork_py) = *main_segment.last().unwrap_or(&(entry_x, entry_y));
-        left_segment = carve_path_segment_points_avoiding(
+        fork_segments = build_fork_segments(
             fork_px,
             fork_py,
-            exit_left_x,
-            exit_left_y,
+            &exit_points,
             width,
             height,
             rng,
             &area_occupied,
-            (-1, 0),
-        );
-        right_segment = carve_path_segment_points_avoiding(
-            fork_px,
-            fork_py,
-            exit_right_x,
-            exit_right_y,
-            width,
-            height,
-            rng,
-            &area_occupied,
-            (0, 1),
         );
     }
 
     let mut paths = Vec::new();
     paths.extend(points_to_segments(&main_segment, PATH_RADIUS));
-    paths.extend(points_to_segments(&left_segment, PATH_RADIUS));
-    paths.extend(points_to_segments(&right_segment, PATH_RADIUS));
+    for segment in &fork_segments {
+        paths.extend(points_to_segments(segment, PATH_RADIUS));
+    }
 
     let water_paths = build_dock_paths(width_i, height_i, &areas, rng);
 
@@ -213,8 +185,9 @@ pub fn generate_map_skeleton_with_config(
             let area = areas[area_index];
             let start = (area.center_x, area.center_y);
             let end = match target {
-                ConnectorTarget::LeftFork => find_nearest_point(&left_segment, start),
-                ConnectorTarget::RightFork => find_nearest_point(&right_segment, start),
+                ConnectorTarget::LeftFork | ConnectorTarget::RightFork => {
+                    find_nearest_point_on_segments(&fork_segments, start)
+                }
                 ConnectorTarget::MainPath => find_nearest_point(&main_segment, start),
                 ConnectorTarget::ForkPoint => Some(fork_point),
             };
@@ -249,6 +222,7 @@ pub fn load_map_skeleton_config(path: &Path) -> Result<MapSkeletonConfig, String
 fn default_map_skeleton_config() -> MapSkeletonConfig {
     MapSkeletonConfig {
         entry: MapPointConfig { x: 1.0, y: 0.0 },
+        fork: MapPointConfig { x: 0.5, y: 0.5 },
         exits: vec![
             MapPointConfig { x: 0.0, y: 0.5 },
             MapPointConfig { x: 0.5, y: 1.0 },
@@ -392,6 +366,34 @@ fn connector_targets_from_config(
         }
     }
     targets
+}
+
+fn build_fork_segments(
+    fork_x: i32,
+    fork_y: i32,
+    exit_points: &[(i32, i32)],
+    width: u32,
+    height: u32,
+    rng: &mut StdRng,
+    area_occupied: &[bool],
+) -> Vec<Vec<(i32, i32)>> {
+    exit_points
+        .iter()
+        .map(|&(exit_x, exit_y)| {
+            let bias_dir = ((exit_x - fork_x).signum(), (exit_y - fork_y).signum());
+            carve_path_segment_points_avoiding(
+                fork_x,
+                fork_y,
+                exit_x,
+                exit_y,
+                width,
+                height,
+                rng,
+                area_occupied,
+                bias_dir,
+            )
+        })
+        .collect()
 }
 
 fn build_search_offsets(max_offset: i32) -> Vec<(i32, i32)> {
@@ -623,6 +625,26 @@ fn find_nearest_point(points: &[(i32, i32)], target: (i32, i32)) -> Option<(i32,
         if dist < best_dist {
             best_dist = dist;
             best = Some((x, y));
+        }
+    }
+    best
+}
+
+fn find_nearest_point_on_segments(
+    segments: &[Vec<(i32, i32)>],
+    target: (i32, i32),
+) -> Option<(i32, i32)> {
+    let mut best = None;
+    let mut best_dist = i32::MAX;
+    for segment in segments {
+        if let Some(point) = find_nearest_point(segment, target) {
+            let dx = point.0 - target.0;
+            let dy = point.1 - target.1;
+            let dist = dx * dx + dy * dy;
+            if dist < best_dist {
+                best_dist = dist;
+                best = Some(point);
+            }
         }
     }
     best
