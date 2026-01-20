@@ -12,11 +12,12 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
     }
 
     let start_x = width.saturating_sub(1);
-    let start_y = height - 1;
-    let end_left = width / 4;
-    let end_right = width.saturating_sub(1 + width / 4);
+    let start_y = 0;
+    let end_left = 0;
+    let end_right = width / 2;
     let fork_x = width / 2;
     let fork_y = height / 2;
+    let exit_y = height / 2;
 
     let mut path = Vec::new();
     let (fork_px, fork_py) = carve_path_segment(
@@ -34,7 +35,7 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         fork_px,
         fork_py,
         end_right as i32,
-        0,
+        height.saturating_sub(1) as i32,
         width,
         height,
         rng,
@@ -44,7 +45,7 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         fork_px,
         fork_py,
         end_left as i32,
-        0,
+        exit_y as i32,
         width,
         height,
         rng,
@@ -88,12 +89,12 @@ fn carve_path_segment(
     let max_steps = (width * height * 4) as usize;
     let mut steps = 0usize;
 
-    while y > end_y && steps < max_steps {
+    while y != end_y && steps < max_steps {
         steps += 1;
         if x != end_x_i && rng.gen_bool(0.45) {
             x += if end_x_i > x { 1 } else { -1 };
         } else {
-            y -= 1;
+            y += if end_y > y { 1 } else { -1 };
         }
         x = x.clamp(0, width.saturating_sub(1) as i32);
         y = y.clamp(0, height.saturating_sub(1) as i32);
