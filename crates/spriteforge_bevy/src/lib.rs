@@ -49,6 +49,8 @@ pub struct RenderTileLayers {
     pub transition: Vec<Option<u32>>,
 }
 
+pub mod map_generators;
+
 pub fn build_render_layers<R: rand::Rng>(
     base_tiles: &[BaseTile],
     width: u32,

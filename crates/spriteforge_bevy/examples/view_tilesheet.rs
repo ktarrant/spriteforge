@@ -4,9 +4,14 @@ use bevy::render::render_resource::{AsBindGroup, ShaderRef, ShaderType};
 use bevy::reflect::TypePath;
 use bevy_ecs_tilemap::helpers::geometry::get_tilemap_center_transform;
 use bevy_ecs_tilemap::prelude::*;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{RngCore, SeedableRng};
 use rand::rngs::StdRng;
-use spriteforge_bevy::{build_render_layers, load_tilesheet_metadata, BaseTile, TilesheetMetadata};
+use spriteforge_bevy::{
+    build_render_layers,
+    load_tilesheet_metadata,
+    map_generators::{path, terrain},
+    TilesheetMetadata,
+};
 use std::path::PathBuf;
 
 const GRASS_IMAGE: &str = "out/tilesheet/grass.png";
@@ -25,9 +30,9 @@ const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const CLUMP_PASSES: usize = 3;
 const WATER_PASS_PASSES: usize = 2;
-const WATER_MIN_NEIGHBORS: i32 = 3;
 const CAMERA_MOVE_SPEED: f32 = 900.0;
 const CAMERA_ZOOM: f32 = 1.6;
+const DEFAULT_MAP_KIND: MapKind = MapKind::Path;
 
 #[derive(Resource)]
 struct TilesheetPaths {
@@ -95,11 +100,18 @@ struct MapEntities {
 #[derive(Resource)]
 struct MapSeed(u64);
 
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+enum MapKind {
+    Terrain,
+    Path,
+}
+
 fn main() {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
         .expect("workspace root");
+    let map_kind = parse_map_kind(std::env::args());
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -111,6 +123,7 @@ fn main() {
         )
         .add_plugins(TilemapPlugin)
         .add_plugins(MaterialTilemapPlugin::<WaterFoamMaterial>::default())
+        .insert_resource(map_kind)
         .insert_resource(TilesheetPaths {
             grass_image: PathBuf::from(GRASS_IMAGE),
             grass_meta: workspace_root.join(GRASS_META),
@@ -130,10 +143,27 @@ fn main() {
         .run();
 }
 
+fn parse_map_kind<I>(args: I) -> MapKind
+where
+    I: IntoIterator<Item = String>,
+{
+    for arg in args {
+        if let Some(value) = arg.strip_prefix("--map=") {
+            return match value {
+                "terrain" => MapKind::Terrain,
+                "path" => MapKind::Path,
+                _ => DEFAULT_MAP_KIND,
+            };
+        }
+    }
+    DEFAULT_MAP_KIND
+}
+
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<WaterFoamMaterial>>,
+    map_kind: Res<MapKind>,
     paths: Res<TilesheetPaths>,
 ) {
     let mut camera = Camera2dBundle::default();
@@ -231,18 +261,28 @@ fn setup(
         grid_size,
     };
     let seed = 1337;
-    let entities = spawn_map(&mut commands, &assets, seed);
+    let entities = spawn_map(&mut commands, &assets, seed, *map_kind);
     commands.insert_resource(assets);
     commands.insert_resource(MapSeed(seed));
     commands.insert_resource(entities);
 }
 
-fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntities {
+fn spawn_map(
+    commands: &mut Commands,
+    assets: &MapAssets,
+    seed: u64,
+    map_kind: MapKind,
+) -> MapEntities {
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut terrain = generate_terrain_map(MAP_WIDTH, MAP_HEIGHT, &mut rng);
-    smooth_terrain(&mut terrain, MAP_WIDTH, MAP_HEIGHT, CLUMP_PASSES);
-    reduce_water_islands(&mut terrain, MAP_WIDTH, MAP_HEIGHT, WATER_PASS_PASSES);
-    let base_tiles = terrain.clone();
+    let base_tiles = match map_kind {
+        MapKind::Terrain => {
+            let mut tiles = terrain::generate_terrain_map(MAP_WIDTH, MAP_HEIGHT, &mut rng);
+            terrain::smooth_terrain(&mut tiles, MAP_WIDTH, MAP_HEIGHT, CLUMP_PASSES);
+            terrain::reduce_water_islands(&mut tiles, MAP_WIDTH, MAP_HEIGHT, WATER_PASS_PASSES);
+            tiles
+        }
+        MapKind::Path => path::generate_path_map(MAP_WIDTH, MAP_HEIGHT, &mut rng),
+    };
     let layers = build_render_layers(
         &base_tiles,
         MAP_WIDTH,
@@ -453,6 +493,7 @@ fn regenerate_map_on_space(
     assets: Res<MapAssets>,
     mut seed: ResMut<MapSeed>,
     mut entities: ResMut<MapEntities>,
+    map_kind: Res<MapKind>,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
         return;
@@ -467,89 +508,5 @@ fn regenerate_map_on_space(
 
     let mut seed_rng = StdRng::seed_from_u64(seed.0);
     seed.0 = seed_rng.next_u64();
-    *entities = spawn_map(&mut commands, &assets, seed.0);
-}
-
-fn generate_terrain_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
-    let mut cells = vec![BaseTile::Dirt; (width * height) as usize];
-    for y in 0..height {
-        for x in 0..width {
-            let idx = (y * width + x) as usize;
-            let roll = rng.gen_range(0.0..1.0);
-            cells[idx] = if roll < 0.2 {
-                BaseTile::Water
-            } else if roll < 0.6 {
-                BaseTile::Grass
-            } else {
-                BaseTile::Dirt
-            };
-        }
-    }
-    cells
-}
-
-fn smooth_terrain(cells: &mut [BaseTile], width: u32, height: u32, passes: usize) {
-    let mut temp = cells.to_vec();
-    for _ in 0..passes {
-        for y in 0..height {
-            for x in 0..width {
-                let mut grass_count = 0;
-                let mut dirt_count = 0;
-                let mut water_count = 0;
-                for ny in y.saturating_sub(1)..=(y + 1).min(height - 1) {
-                    for nx in x.saturating_sub(1)..=(x + 1).min(width - 1) {
-                        let idx = (ny * width + nx) as usize;
-                        match cells[idx] {
-                            BaseTile::Grass => grass_count += 1,
-                            BaseTile::Dirt => dirt_count += 1,
-                            BaseTile::Water => water_count += 1,
-                        }
-                    }
-                }
-                let idx = (y * width + x) as usize;
-                let max = grass_count.max(dirt_count).max(water_count);
-                temp[idx] = if max == water_count {
-                    BaseTile::Water
-                } else if max == grass_count {
-                    BaseTile::Grass
-                } else {
-                    BaseTile::Dirt
-                };
-            }
-        }
-        cells.copy_from_slice(&temp);
-    }
-}
-
-fn reduce_water_islands(cells: &mut [BaseTile], width: u32, height: u32, passes: usize) {
-    let mut temp = cells.to_vec();
-    for _ in 0..passes {
-        for y in 0..height {
-            for x in 0..width {
-                let idx = (y * width + x) as usize;
-                if cells[idx] != BaseTile::Water {
-                    temp[idx] = cells[idx];
-                    continue;
-                }
-                let mut water_neighbors = 0;
-                for ny in y.saturating_sub(1)..=(y + 1).min(height - 1) {
-                    for nx in x.saturating_sub(1)..=(x + 1).min(width - 1) {
-                        if nx == x && ny == y {
-                            continue;
-                        }
-                        let nidx = (ny * width + nx) as usize;
-                        if cells[nidx] == BaseTile::Water {
-                            water_neighbors += 1;
-                        }
-                    }
-                }
-                if water_neighbors < WATER_MIN_NEIGHBORS {
-                    temp[idx] = BaseTile::Dirt;
-                } else {
-                    temp[idx] = BaseTile::Water;
-                }
-            }
-        }
-        cells.copy_from_slice(&temp);
-    }
+    *entities = spawn_map(&mut commands, &assets, seed.0, *map_kind);
 }
