@@ -1,6 +1,9 @@
 use serde::Deserialize;
 use std::path::Path;
 
+pub mod selection;
+pub use selection::{TileSelectedEvent, TileSelectionPlugin, TileSelectionSettings, TileSelectionState};
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct TilesheetMetadata {
     pub image: String,

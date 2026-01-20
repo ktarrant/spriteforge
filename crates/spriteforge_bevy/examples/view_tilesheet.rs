@@ -9,7 +9,10 @@ use bevy_ecs_tilemap::helpers::geometry::get_tilemap_center_transform;
 use bevy_ecs_tilemap::prelude::*;
 use rand::{Rng, RngCore, SeedableRng};
 use rand::rngs::StdRng;
-use spriteforge_bevy::{build_render_layers, load_tilesheet_metadata, BaseTile, TilesheetMetadata};
+use spriteforge_bevy::{
+    build_render_layers, load_tilesheet_metadata, BaseTile, TileSelectedEvent,
+    TileSelectionPlugin, TileSelectionSettings, TileSelectionState, TilesheetMetadata,
+};
 use std::path::PathBuf;
 
 const GRASS_IMAGE: &str = "out/tilesheet/grass.png";
@@ -115,17 +118,8 @@ struct SelectedTileUi {
 #[derive(Resource)]
 struct MapSeed(u64);
 
-#[derive(Resource)]
-struct CursorPos(Vec2);
-
-impl Default for CursorPos {
-    fn default() -> Self {
-        Self(Vec2::new(-10000.0, -10000.0))
-    }
-}
-
 #[derive(Resource, Default)]
-struct HighlightState {
+struct OverlayState {
     hovered: Option<TilePos>,
     selected: Option<TilePos>,
     hover_entity: Option<Entity>,
@@ -148,8 +142,8 @@ fn main() {
         )
         .add_plugins(TilemapPlugin)
         .add_plugins(MaterialTilemapPlugin::<WaterFoamMaterial>::default())
-        .init_resource::<CursorPos>()
-        .init_resource::<HighlightState>()
+        .add_plugins(TileSelectionPlugin)
+        .init_resource::<OverlayState>()
         .insert_resource(TilesheetPaths {
             grass_image: PathBuf::from(GRASS_IMAGE),
             grass_meta: workspace_root.join(GRASS_META),
@@ -165,22 +159,15 @@ fn main() {
             water_transition_mask_image: PathBuf::from(WATER_TRANSITION_MASK_IMAGE),
         })
         .add_systems(Startup, setup)
-        .add_systems(First, update_cursor_pos)
         .add_systems(
             Update,
             (
                 regenerate_map_on_space,
-                update_tile_selection,
-                update_tile_hover,
+                update_tile_overlays,
                 camera_pan,
             ),
         )
-        .add_systems(
-            Update,
-            update_selected_tile_ui
-                .after(update_tile_selection)
-                .after(regenerate_map_on_space),
-        )
+        .add_systems(Update, update_selected_tile_ui.after(regenerate_map_on_space))
         .run();
 }
 
@@ -302,11 +289,13 @@ fn setup(
     let entities = spawn_map(&mut commands, &assets, seed);
     commands.insert_resource(assets);
     commands.insert_resource(MapSeed(seed));
+    let primary_map = entities.entities.primary_map;
     commands.insert_resource(entities.entities);
     commands.insert_resource(MapTileData {
         tiles: entities.base_tiles,
         map_size: map_size_copy,
     });
+    commands.insert_resource(TileSelectionSettings::new(primary_map));
     spawn_selected_tile_ui(&mut commands, &asset_server);
 }
 
@@ -565,114 +554,69 @@ fn camera_pan(
     }
 }
 
-fn update_cursor_pos(
-    camera_q: Query<(&GlobalTransform, &Camera)>,
-    mut cursor_moved_events: EventReader<CursorMoved>,
-    mut cursor_pos: ResMut<CursorPos>,
-) {
-    for cursor_moved in cursor_moved_events.read() {
-        for (cam_t, cam) in camera_q.iter() {
-            if let Some(pos) = cam.viewport_to_world_2d(cam_t, cursor_moved.position) {
-                cursor_pos.0 = pos;
-            }
-        }
-    }
-}
-
-fn update_tile_selection(
+fn update_tile_overlays(
     mut commands: Commands,
-    buttons: Res<ButtonInput<MouseButton>>,
-    cursor_pos: Res<CursorPos>,
+    selection: Res<TileSelectionState>,
     entities: Res<MapEntities>,
-    mut highlight: ResMut<HighlightState>,
-    base_map_q: Query<(&TilemapSize, &TilemapGridSize, &TilemapType, &Transform)>,
+    mut overlay: ResMut<OverlayState>,
     mut storage_q: Query<&mut TileStorage>,
 ) {
-    if !buttons.just_pressed(MouseButton::Left) {
-        return;
-    }
-    let Ok((map_size, grid_size, map_type, map_transform)) =
-        base_map_q.get(entities.primary_map)
-    else {
-        return;
-    };
-    let tile_pos = cursor_to_tile_pos(cursor_pos.0, map_size, grid_size, map_type, map_transform);
-    if tile_pos == highlight.selected {
-        return;
-    }
-    if let Some(prev_pos) = highlight.selected.take() {
-        if let Ok(mut storage) = storage_q.get_mut(entities.selected_map) {
-            if let Some(entity) = storage.get(&prev_pos) {
-                commands.entity(entity).despawn();
+    if selection.selected != overlay.selected {
+        if let Some(prev_pos) = overlay.selected.take() {
+            if let Ok(mut storage) = storage_q.get_mut(entities.selected_map) {
+                if let Some(entity) = storage.get(&prev_pos) {
+                    commands.entity(entity).despawn();
+                }
+                storage.remove(&prev_pos);
             }
-            storage.remove(&prev_pos);
+        }
+        overlay.selected_entity = None;
+        overlay.selected = selection.selected;
+        if let Some(tile_pos) = selection.selected {
+            let tile_entity = commands
+                .spawn(TileBundle {
+                    position: tile_pos,
+                    tilemap_id: TilemapId(entities.selected_map),
+                    texture_index: TileTextureIndex(0),
+                    ..Default::default()
+                })
+                .id();
+            if let Ok(mut storage) = storage_q.get_mut(entities.selected_map) {
+                storage.set(&tile_pos, tile_entity);
+            }
+            overlay.selected_entity = Some(tile_entity);
         }
     }
-    highlight.selected_entity = None;
-    highlight.selected = tile_pos;
-    let Some(tile_pos) = tile_pos else {
-        return;
-    };
-    let tile_entity = commands
-        .spawn(TileBundle {
-            position: tile_pos,
-            tilemap_id: TilemapId(entities.selected_map),
-            texture_index: TileTextureIndex(0),
-            ..Default::default()
-        })
-        .id();
-    if let Ok(mut storage) = storage_q.get_mut(entities.selected_map) {
-        storage.set(&tile_pos, tile_entity);
-    }
-    highlight.selected_entity = Some(tile_entity);
-}
 
-fn update_tile_hover(
-    mut commands: Commands,
-    cursor_pos: Res<CursorPos>,
-    entities: Res<MapEntities>,
-    mut highlight: ResMut<HighlightState>,
-    base_map_q: Query<(&TilemapSize, &TilemapGridSize, &TilemapType, &Transform)>,
-    mut storage_q: Query<&mut TileStorage>,
-) {
-    let Ok((map_size, grid_size, map_type, map_transform)) =
-        base_map_q.get(entities.primary_map)
-    else {
-        return;
-    };
-    let mut tile_pos =
-        cursor_to_tile_pos(cursor_pos.0, map_size, grid_size, map_type, map_transform);
-    if tile_pos == highlight.selected {
-        tile_pos = None;
-    }
-    if tile_pos == highlight.hovered {
-        return;
-    }
-    if let Some(prev_pos) = highlight.hovered.take() {
-        if let Ok(mut storage) = storage_q.get_mut(entities.hover_map) {
-            if let Some(entity) = storage.get(&prev_pos) {
-                commands.entity(entity).despawn();
+    let hover_pos = selection
+        .hovered
+        .filter(|pos| Some(*pos) != selection.selected);
+    if hover_pos != overlay.hovered {
+        if let Some(prev_pos) = overlay.hovered.take() {
+            if let Ok(mut storage) = storage_q.get_mut(entities.hover_map) {
+                if let Some(entity) = storage.get(&prev_pos) {
+                    commands.entity(entity).despawn();
+                }
+                storage.remove(&prev_pos);
             }
-            storage.remove(&prev_pos);
+        }
+        overlay.hover_entity = None;
+        overlay.hovered = hover_pos;
+        if let Some(tile_pos) = hover_pos {
+            let tile_entity = commands
+                .spawn(TileBundle {
+                    position: tile_pos,
+                    tilemap_id: TilemapId(entities.hover_map),
+                    texture_index: TileTextureIndex(0),
+                    ..Default::default()
+                })
+                .id();
+            if let Ok(mut storage) = storage_q.get_mut(entities.hover_map) {
+                storage.set(&tile_pos, tile_entity);
+            }
+            overlay.hover_entity = Some(tile_entity);
         }
     }
-    highlight.hover_entity = None;
-    highlight.hovered = tile_pos;
-    let Some(tile_pos) = tile_pos else {
-        return;
-    };
-    let tile_entity = commands
-        .spawn(TileBundle {
-            position: tile_pos,
-            tilemap_id: TilemapId(entities.hover_map),
-            texture_index: TileTextureIndex(0),
-            ..Default::default()
-        })
-        .id();
-    if let Ok(mut storage) = storage_q.get_mut(entities.hover_map) {
-        storage.set(&tile_pos, tile_entity);
-    }
-    highlight.hover_entity = Some(tile_entity);
 }
 
 fn spawn_selected_tile_ui(commands: &mut Commands, _asset_server: &Res<AssetServer>) {
@@ -709,34 +653,36 @@ fn spawn_selected_tile_ui(commands: &mut Commands, _asset_server: &Res<AssetServ
 }
 
 fn update_selected_tile_ui(
+    mut events: EventReader<TileSelectedEvent>,
     mut ui: ResMut<SelectedTileUi>,
-    highlight: Res<HighlightState>,
     tile_data: Res<MapTileData>,
     mut text_q: Query<&mut Text>,
 ) {
-    if highlight.selected == ui.last_selected {
+    let mut latest = None;
+    for event in events.read() {
+        latest = Some(event.tile_pos);
+    }
+    let Some(tile_pos) = latest else {
+        return;
+    };
+    if ui.last_selected == Some(tile_pos) {
         return;
     }
-    ui.last_selected = highlight.selected;
+    ui.last_selected = Some(tile_pos);
     let Ok(mut text) = text_q.get_mut(ui.text_entity) else {
         return;
     };
-    let message = if let Some(tile_pos) = highlight.selected {
-        let idx = (tile_pos.y * tile_data.map_size.x + tile_pos.x) as usize;
-        let tile_type = match tile_data.tiles.get(idx) {
-            Some(BaseTile::Grass) => "Grass",
-            Some(BaseTile::Dirt) => "Dirt",
-            Some(BaseTile::Water) => "Water",
-            None => "Unknown",
-        };
-        format!(
-            "Selected Tile\nPos: {}, {}\nType: {}",
-            tile_pos.x, tile_pos.y, tile_type
-        )
-    } else {
-        "No tile selected".to_string()
+    let idx = (tile_pos.y * tile_data.map_size.x + tile_pos.x) as usize;
+    let tile_type = match tile_data.tiles.get(idx) {
+        Some(BaseTile::Grass) => "Grass",
+        Some(BaseTile::Dirt) => "Dirt",
+        Some(BaseTile::Water) => "Water",
+        None => "Unknown",
     };
-    text.sections[0].value = message;
+    text.sections[0].value = format!(
+        "Selected Tile\nPos: {}, {}\nType: {}",
+        tile_pos.x, tile_pos.y, tile_type
+    );
 }
 
 fn regenerate_map_on_space(
@@ -744,7 +690,9 @@ fn regenerate_map_on_space(
     keys: Res<ButtonInput<KeyCode>>,
     assets: Res<MapAssets>,
     mut seed: ResMut<MapSeed>,
-    mut highlight: ResMut<HighlightState>,
+    mut overlay: ResMut<OverlayState>,
+    mut selection_state: ResMut<TileSelectionState>,
+    mut selection_settings: ResMut<TileSelectionSettings>,
     mut entities: ResMut<MapEntities>,
     mut tile_data: ResMut<MapTileData>,
 ) {
@@ -758,37 +706,25 @@ fn regenerate_map_on_space(
     for entity in entities.tilemaps.drain(..) {
         commands.entity(entity).despawn();
     }
-    if let Some(entity) = highlight.hover_entity.take() {
+    if let Some(entity) = overlay.hover_entity.take() {
         commands.entity(entity).despawn();
     }
-    if let Some(entity) = highlight.selected_entity.take() {
+    if let Some(entity) = overlay.selected_entity.take() {
         commands.entity(entity).despawn();
     }
-    highlight.hovered = None;
-    highlight.selected = None;
+    overlay.hovered = None;
+    overlay.selected = None;
+    selection_state.hovered = None;
+    selection_state.selected = None;
 
     let mut seed_rng = StdRng::seed_from_u64(seed.0);
     seed.0 = seed_rng.next_u64();
     let spawn = spawn_map(&mut commands, &assets, seed.0);
     *entities = spawn.entities;
     tile_data.tiles = spawn.base_tiles;
+    selection_settings.target_map = Some(entities.primary_map);
 }
 
-fn cursor_to_tile_pos(
-    cursor_pos: Vec2,
-    map_size: &TilemapSize,
-    grid_size: &TilemapGridSize,
-    map_type: &TilemapType,
-    map_transform: &Transform,
-) -> Option<TilePos> {
-    let cursor_pos = Vec4::from((cursor_pos, 0.0, 1.0));
-    let cursor_in_map_pos = map_transform.compute_matrix().inverse() * cursor_pos;
-    let mut cursor_in_map_pos = cursor_in_map_pos.xy();
-    if matches!(map_type, TilemapType::Isometric(IsoCoordSystem::Diamond)) {
-        cursor_in_map_pos.y += grid_size.y * 0.5;
-    }
-    TilePos::from_world_pos(&cursor_in_map_pos, map_size, grid_size, map_type)
-}
 
 fn create_outline_image(size: u32, color: [u8; 4], thickness: u32) -> Image {
     let mut image = Image::new_fill(
