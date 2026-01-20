@@ -29,5 +29,8 @@ fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
     let bob = sin(phase * TAU) * 0.2;
     let wave = sin((lx * freq + phase) * TAU) * sin(((ly + bob) * freq + phase) * TAU);
     let shimmer = clamp(wave, 0.0, 1.0) * params.foam_settings.x;
-    return vec4<f32>(base.rgb + shimmer, base.a);
+    let mask = textureSample(mask_texture, mask_sampler, in.uv.xy).a;
+    let shaded = base.rgb + shimmer;
+    let rgb = mix(base.rgb, shaded, mask);
+    return vec4<f32>(rgb, base.a);
 }

@@ -52,7 +52,8 @@ pub fn render_water_transition_tile(
 
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     draw_isometric_ground(&mut img, size, water);
-    apply_edge_cutout(&mut img, &angles, cutoff);
+    let gradient = 0.0;
+    apply_edge_cutout(&mut img, &angles, cutoff, gradient);
     Ok(img)
 }
 
@@ -84,21 +85,24 @@ pub fn render_water_transition_mask_tile(
     }
     let mut tile = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
     draw_isometric_ground(&mut tile, size, Rgba([255, 255, 255, 255]));
-    apply_edge_cutout(&mut tile, &angles, cutoff);
+    let gradient = 0.2;
+    apply_edge_cutout(&mut tile, &angles, cutoff, gradient);
     Ok(tile)
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 fn apply_edge_cutout(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     angles: &[f32],
     cutoff: f32,
+    gradient: f32,
 ) {
     let w = img.width().max(1) as f32;
     let h = img.height().max(1) as f32;
-    let cutoff_a = |xf: f32| 0.75 - (1.0 - xf - cutoff) * 0.5;
-    let cutoff_b = |xf: f32| 0.75 - (xf - cutoff) * 0.5;
-    let cutoff_c = |xf: f32| 0.75 + (xf - cutoff) * 0.5;
-    let cutoff_d = |xf: f32| 0.75 + (1.0 - xf - cutoff) * 0.5;
     let has_angle = |target: f32| angles.iter().any(|angle| (*angle - target).abs() < 0.01);
     let angles_lookup = [
         has_angle(0.0),
@@ -116,86 +120,178 @@ fn apply_edge_cutout(
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-
-        let should_cutout = (angles_lookup[1] && yf <= cutoff_a(xf))
-            || (angles_lookup[3] && yf <= cutoff_b(xf))
-            || (angles_lookup[5] && yf >= cutoff_c(xf))
-            || (angles_lookup[7] && yf >= cutoff_d(xf))
-            || (angles_lookup[0] && {
-                    let cx = 1.0 - cutoff * 0.25;
-                    let cy = 0.75;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff * 0.4;
-                    (dx * dx + dy * dy <= radius * radius) || (xf > cx)
-                })
-            || (angles_lookup[2] && {
-                    let cx = 0.5;
-                    let cy = 0.5 - cutoff * 0.6;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff;
-                    (dx * dx + dy * dy <= radius * radius) || (yf < cy)
-                })
-            || (angles_lookup[4] && {
-                    let cx = cutoff * 0.25;
-                    let cy = 0.75;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff * 0.4;
-                    (dx * dx + dy * dy <= radius * radius) || (xf < cx)
-                })
-            || (angles_lookup[6] && {
-                    let cx = 0.5;
-                    let cy = 1.0 + cutoff * 0.6;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff;
-                    (dx * dx + dy * dy <= radius * radius) || (yf > cy)
-                })
-            || (angles_lookup[1]
-                && angles_lookup[7]
-                && {
-                    let cx = 1.0 - cutoff * 2.0;
-                    let cy = 0.75;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff * 0.5;
-                    (dx * dx + dy * dy >= radius * radius) && (xf > cx)
-                })
-            || (angles_lookup[3]
-                && angles_lookup[5]
-                && {
-                    let cx = cutoff * 2.0;
-                    let cy = 0.75;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff * 0.5;
-                    (dx * dx + dy * dy >= radius * radius) && (xf < cx)
-                })
-            || (angles_lookup[1]
-                && angles_lookup[3]
-                && {
-                    let cx = 0.5;
-                    let cy = 0.5 + cutoff * 4.8;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff * 4.0;
-                    dx * dx + dy * dy >= radius * radius
-                })
-            || (angles_lookup[5]
-                && angles_lookup[7]
-                && {
-                    let cx = 0.5;
-                    let cy = 1.0 - cutoff * 4.8;
-                    let dx = xf - cx;
-                    let dy = yf - cy;
-                    let radius = cutoff * 4.0;
-                    dx * dx + dy * dy >= radius * radius
-                });
-
-        if should_cutout {
-            *pixel = Rgba([0, 0, 0, 0]);
+        
+        let mut alpha: f32 = 1.0;
+        if angles_lookup[1] {
+            // Line is written as y = 0.75 - (1.0 - x - cutoff) * 0.5
+            let border: f32 = 0.75 - (1.0 - xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m*m + 1.0).sqrt();      // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom;       // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, -gradient, d);
+            }
+            if d > 0.0 {
+                alpha = 0.0;
+            }
         }
+
+        if angles_lookup[3] {
+            // Line is written as y = 0.75 - (x - cutoff) * 0.5
+            let border: f32 = 0.75 - (xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m*m + 1.0).sqrt();      // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom;       // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, -gradient, d);
+            }
+            if d > 0.0 {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[5] {
+            // Line is written as y = 0.75 + (x - cutoff) * 0.5
+            let border: f32 = 0.75 + (xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m*m + 1.0).sqrt();      // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom;       // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, gradient, d);
+            }
+            if d < 0.0 {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[7] {
+            // Line is written as y = 0.75 + (1.0 - x - cutoff) * 0.5
+            let border: f32 = 0.75 + (1.0 - xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m*m + 1.0).sqrt();      // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom;       // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, gradient, d);
+            }
+            if d < 0.0 {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[0] {
+            let cx = 1.0 - cutoff * 0.25;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.4;
+            let d = (dx * dx + dy * dy).sqrt();
+            if xf > cx {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[2] {
+            let cx = 0.5;
+            let cy = 0.5 - cutoff * 0.6;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff;
+            let d = (dx * dx + dy * dy).sqrt();
+            if yf < cy {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[4] {
+            let cx = cutoff * 0.25;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.4;
+            let d = (dx * dx + dy * dy).sqrt();
+            if xf < cx {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[6] {
+            let cx = 0.5;
+            let cy = 1.0 + cutoff * 0.6;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff;
+            let d = (dx * dx + dy * dy).sqrt();
+            if yf > cy {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[1] && angles_lookup[7] {
+            let cx = 1.0 - cutoff * 2.0;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.5;
+            if (dx * dx + dy * dy >= radius * radius) && (xf > cx) {
+                alpha = 0.0;
+            }
+        }
+        
+        if angles_lookup[3]&& angles_lookup[5] {
+            let cx = cutoff * 2.0;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.5;
+            if (dx * dx + dy * dy >= radius * radius) && (xf < cx) {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[1] && angles_lookup[3] {
+            let cx = 0.5;
+            let cy = 0.5 + cutoff * 4.8;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 4.0;
+            if dx * dx + dy * dy >= radius * radius {
+                alpha = 0.0;
+            }
+        }
+
+        if angles_lookup[5]&& angles_lookup[7] {
+            let cx = 0.5;
+            let cy = 1.0 - cutoff * 4.8;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 4.0;
+            if dx * dx + dy * dy >= radius * radius {
+                alpha = 0.0;
+            }
+        }
+
+        let [r, g, b, _] = pixel.0;
+        let alpha_u8 = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
+        *pixel = Rgba([r, g, b, alpha_u8]);
     }
 }
