@@ -5,7 +5,7 @@ use bevy::window::PrimaryWindow;
 use bevy_ecs_tilemap::prelude::{TilemapGridSize, TilemapSize, TilemapType, TilePos};
 
 use crate::map_generators::path::{MapArea, MapSkeleton, PathSegment};
-use crate::BaseTile;
+use crate::{BaseTile, TileSelectionState};
 
 #[derive(Resource, Clone)]
 pub struct MiniMapSource {
@@ -27,9 +27,11 @@ pub struct MiniMapSettings {
     pub path_color: Color,
     pub area_color: Color,
     pub camera_color: Color,
+    pub selection_color: Color,
     pub background_color: Color,
     pub toggle_paths_key: KeyCode,
     pub toggle_areas_key: KeyCode,
+    pub toggle_focus_key: KeyCode,
     pub toggle_visible_key: KeyCode,
 }
 
@@ -44,10 +46,12 @@ impl Default for MiniMapSettings {
             path_color: Color::srgba(0.95, 0.95, 0.95, 0.95),
             area_color: Color::srgba(0.95, 0.75, 0.2, 0.9),
             camera_color: Color::srgba(0.9, 0.2, 0.2, 0.9),
+            selection_color: Color::srgba(0.95, 0.2, 0.85, 0.95),
             background_color: Color::srgba(0.05, 0.05, 0.05, 0.85),
             toggle_paths_key: KeyCode::Digit1,
             toggle_areas_key: KeyCode::Digit2,
-            toggle_visible_key: KeyCode::Digit3,
+            toggle_focus_key: KeyCode::Digit3,
+            toggle_visible_key: KeyCode::Digit4,
         }
     }
 }
@@ -56,6 +60,7 @@ impl Default for MiniMapSettings {
 pub struct MiniMapState {
     pub show_paths: bool,
     pub show_areas: bool,
+    pub show_focus: bool,
     pub visible: bool,
 }
 
@@ -64,6 +69,7 @@ impl Default for MiniMapState {
         Self {
             show_paths: true,
             show_areas: true,
+            show_focus: true,
             visible: true,
         }
     }
@@ -163,6 +169,9 @@ fn toggle_minimap_overlays(
     if keys.just_pressed(settings.toggle_areas_key) {
         state.show_areas = !state.show_areas;
     }
+    if keys.just_pressed(settings.toggle_focus_key) {
+        state.show_focus = !state.show_focus;
+    }
     if keys.just_pressed(settings.toggle_visible_key) {
         state.visible = !state.visible;
         if let Some(minimap) = minimap {
@@ -187,15 +196,21 @@ fn update_minimap(
     camera_changed: Query<(), Or<(Changed<Camera>, Changed<GlobalTransform>)>>,
     map_q: Query<&Transform>,
     windows: Query<&Window, With<PrimaryWindow>>,
+    selection_state: Option<Res<TileSelectionState>>,
 ) {
     let (Some(source), Some(minimap)) = (source, minimap) else {
         return;
     };
     let camera_dirty = camera_changed.iter().next().is_some();
+    let selection_dirty = selection_state
+        .as_ref()
+        .map(|state| state.is_changed())
+        .unwrap_or(false);
     if !source.is_changed()
         && !settings.is_changed()
         && !state.is_changed()
         && !camera_dirty
+        && !selection_dirty
     {
         return;
     }
@@ -242,20 +257,34 @@ fn update_minimap(
             );
         }
     }
-    if let Some(map_entity) = source.map_entity {
-        if let Ok(map_transform) = map_q.get(map_entity) {
-            draw_camera_rect(
-                &mut image.data,
-                size,
-                offset,
-                source.map_size,
-                source.grid_size,
-                source.map_type,
-                map_transform,
-                &settings,
-                &camera_q,
-                &windows,
-            );
+    if state.show_focus {
+        if let Some(map_entity) = source.map_entity {
+            if let Ok(map_transform) = map_q.get(map_entity) {
+                draw_camera_rect(
+                    &mut image.data,
+                    size,
+                    offset,
+                    source.map_size,
+                    source.grid_size,
+                    source.map_type,
+                    map_transform,
+                    &settings,
+                    &camera_q,
+                    &windows,
+                );
+            }
+        }
+        if let Some(selection_state) = selection_state {
+            if let Some(tile_pos) = selection_state.selected {
+                draw_highlight_tile(
+                    &mut image.data,
+                    size,
+                    offset,
+                    source.map_size,
+                    tile_pos,
+                    &settings,
+                );
+            }
         }
     }
 }
@@ -447,6 +476,25 @@ fn draw_camera_rect(
         draw_diamond(data, size, minimap_center(rx0, ry0, settings.tile_px, offset), settings.tile_px, settings.camera_color);
         draw_diamond(data, size, minimap_center(rx1, ry1, settings.tile_px, offset), settings.tile_px, settings.camera_color);
     }
+}
+
+fn draw_highlight_tile(
+    data: &mut [u8],
+    size: UVec2,
+    offset: Vec2,
+    map_size: TilemapSize,
+    tile_pos: TilePos,
+    settings: &MiniMapSettings,
+) {
+    let (rx, ry) = rotate_coord(tile_pos.x as i32, tile_pos.y as i32, map_size);
+    let center = minimap_center(rx, ry, settings.tile_px, offset);
+    draw_diamond(
+        data,
+        size,
+        center,
+        settings.tile_px,
+        settings.selection_color,
+    );
 }
 
 fn draw_diamond(data: &mut [u8], size: UVec2, center: Vec2, tile_px: u32, color: Color) {
