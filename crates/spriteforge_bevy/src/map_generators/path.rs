@@ -10,6 +10,8 @@ const BRANCH_LENGTH_MIN: i32 = 8;
 const BRANCH_LENGTH_MAX: i32 = 12;
 const BRANCHES_PER_TRUNK: usize = 2;
 const BRANCH_CLEARANCE: i32 = 3;
+const CAPILLARY_LENGTH_MIN: i32 = 4;
+const CAPILLARY_LENGTH_STEP: i32 = 2;
 const BRANCH_SET_ATTEMPTS: usize = 12;
 const BRANCH_START_ATTEMPTS: usize = 24;
 
@@ -18,6 +20,20 @@ struct PathPoint {
     x: i32,
     y: i32,
     radius: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PathSegment {
+    start_x: i32,
+    start_y: i32,
+    end_x: i32,
+    end_y: i32,
+    radius: i32,
+}
+
+#[derive(Clone, Debug)]
+struct PathSkeleton {
+    segments: Vec<PathSegment>,
 }
 
 #[derive(Clone, Copy)]
@@ -30,9 +46,14 @@ struct BranchSpec {
 }
 
 pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
+    let skeleton = generate_path_skeleton(width, height, rng);
+    rasterize_skeleton(width, height, &skeleton)
+}
+
+fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkeleton {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
     if width == 0 || height == 0 {
-        return cells;
+        return PathSkeleton { segments: Vec::new() };
     }
 
     let start_x = width.saturating_sub(1);
@@ -47,6 +68,7 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
 
     let mut path = Vec::new();
     let mut occupied = HashSet::new();
+    let mut segments = Vec::new();
 
     let main_segment = carve_path_segment_points(
         start_x as i32,
@@ -61,6 +83,7 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         .last()
         .unwrap_or(&(start_x as i32, start_y as i32));
     add_segment(&mut path, &mut occupied, &main_segment, PATH_RADIUS);
+    segments.extend(points_to_segments(&main_segment, PATH_RADIUS));
 
     let right_segment = carve_path_segment_points(
         fork_px,
@@ -72,6 +95,7 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         rng,
     );
     add_segment(&mut path, &mut occupied, &right_segment, PATH_RADIUS);
+    segments.extend(points_to_segments(&right_segment, PATH_RADIUS));
 
     let left_segment = carve_path_segment_points(
         fork_px,
@@ -83,6 +107,7 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         rng,
     );
     add_segment(&mut path, &mut occupied, &left_segment, PATH_RADIUS);
+    segments.extend(points_to_segments(&left_segment, PATH_RADIUS));
 
     let dead_segment = carve_path_segment_points(
         fork_px,
@@ -94,6 +119,7 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         rng,
     );
     add_segment(&mut path, &mut occupied, &dead_segment, PATH_RADIUS);
+    segments.extend(points_to_segments(&dead_segment, PATH_RADIUS));
 
     if let Some(branches) = select_branch_set(
         &main_segment,
@@ -105,28 +131,32 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         rng,
     ) {
         for branch in branches {
-            apply_branch(&mut path, &mut occupied, &branch, BRANCH_CLEARANCE);
+            apply_branch(
+                &mut path,
+                &mut occupied,
+                &branch,
+                BRANCH_CLEARANCE,
+                width,
+                height,
+            );
+            segments.push(PathSegment {
+                start_x: branch.start_x,
+                start_y: branch.start_y,
+                end_x: branch.start_x + branch.dir_x * branch.length,
+                end_y: branch.start_y + branch.dir_y * branch.length,
+                radius: BRANCH_RADIUS,
+            });
         }
     }
 
-    for point in path {
-        let radius = point.radius;
-        for ny in (point.y - radius)..=(point.y + radius) {
-            for nx in (point.x - radius)..=(point.x + radius) {
-                if nx < 0 || ny < 0 {
-                    continue;
-                }
-                let nx = nx as u32;
-                let ny = ny as u32;
-                if nx >= width || ny >= height {
-                    continue;
-                }
-                let idx = (ny * width + nx) as usize;
-                cells[idx] = BaseTile::Dirt;
-            }
-        }
-    }
+    PathSkeleton { segments }
+}
 
+fn rasterize_skeleton(width: u32, height: u32, skeleton: &PathSkeleton) -> Vec<BaseTile> {
+    let mut cells = vec![BaseTile::Grass; (width * height) as usize];
+    for segment in &skeleton.segments {
+        rasterize_segment(width, height, segment, &mut cells);
+    }
     cells
 }
 
@@ -167,6 +197,63 @@ fn carve_path_segment_points(
         segment.push((x, y));
     }
     segment
+}
+
+fn points_to_segments(points: &[(i32, i32)], radius: i32) -> Vec<PathSegment> {
+    if points.len() < 2 {
+        return Vec::new();
+    }
+    let mut segments = Vec::new();
+    let mut start = points[0];
+    let mut prev = points[0];
+    let mut dir = (points[1].0 - points[0].0, points[1].1 - points[0].1);
+    for &point in points.iter().skip(1) {
+        let next_dir = (point.0 - prev.0, point.1 - prev.1);
+        if next_dir != dir {
+            segments.push(PathSegment {
+                start_x: start.0,
+                start_y: start.1,
+                end_x: prev.0,
+                end_y: prev.1,
+                radius,
+            });
+            start = prev;
+            dir = next_dir;
+        }
+        prev = point;
+    }
+    segments.push(PathSegment {
+        start_x: start.0,
+        start_y: start.1,
+        end_x: prev.0,
+        end_y: prev.1,
+        radius,
+    });
+    segments
+}
+
+fn rasterize_segment(width: u32, height: u32, segment: &PathSegment, cells: &mut [BaseTile]) {
+    let dx = (segment.end_x - segment.start_x).signum();
+    let dy = (segment.end_y - segment.start_y).signum();
+    let steps = (segment.end_x - segment.start_x).abs() + (segment.end_y - segment.start_y).abs();
+    for step in 0..=steps {
+        let x = segment.start_x + dx * step;
+        let y = segment.start_y + dy * step;
+        for ny in (y - segment.radius)..=(y + segment.radius) {
+            for nx in (x - segment.radius)..=(x + segment.radius) {
+                if nx < 0 || ny < 0 {
+                    continue;
+                }
+                let nx = nx as u32;
+                let ny = ny as u32;
+                if nx >= width || ny >= height {
+                    continue;
+                }
+                let idx = (ny * width + nx) as usize;
+                cells[idx] = BaseTile::Dirt;
+            }
+        }
+    }
 }
 
 fn add_segment(
@@ -266,7 +353,11 @@ fn pick_branch_start(
         } else {
             (side, 0)
         };
-        let length = rng.gen_range(BRANCH_LENGTH_MIN..=BRANCH_LENGTH_MAX);
+        let max_length = max_length_in_direction(sx, sy, branch_dx, branch_dy, width, height);
+        if max_length < BRANCH_LENGTH_MIN {
+            continue;
+        }
+        let length = rng.gen_range(BRANCH_LENGTH_MIN..=BRANCH_LENGTH_MAX.min(max_length));
         return Some(BranchSpec {
             start_x: sx,
             start_y: sy,
@@ -284,6 +375,17 @@ fn branch_fits(
     width: u32,
     height: u32,
 ) -> bool {
+    let max_length = max_length_in_direction(
+        branch.start_x,
+        branch.start_y,
+        branch.dir_x,
+        branch.dir_y,
+        width,
+        height,
+    );
+    if branch.length > max_length {
+        return false;
+    }
     let max_x = width.saturating_sub(1) as i32;
     let max_y = height.saturating_sub(1) as i32;
     for step in 1..=branch.length {
@@ -304,7 +406,11 @@ fn apply_branch(
     occupied: &mut HashSet<(i32, i32)>,
     branch: &BranchSpec,
     clearance: i32,
+    width: u32,
+    height: u32,
 ) {
+    let mut end_x = branch.start_x;
+    let mut end_y = branch.start_y;
     for step in 1..=branch.length {
         let x = branch.start_x + branch.dir_x * step;
         let y = branch.start_y + branch.dir_y * step;
@@ -314,7 +420,21 @@ fn apply_branch(
             radius: BRANCH_RADIUS,
         });
         mark_with_clearance(occupied, x, y, clearance);
+        end_x = x;
+        end_y = y;
     }
+    grow_capillaries(
+        path,
+        occupied,
+        end_x,
+        end_y,
+        branch.dir_x,
+        branch.dir_y,
+        branch.length,
+        clearance,
+        width,
+        height,
+    );
 }
 
 fn mark_branch_occupied(
@@ -337,6 +457,125 @@ fn mark_with_clearance(occupied: &mut HashSet<(i32, i32)>, x: i32, y: i32, clear
     for ny in (y - clearance)..=(y + clearance) {
         for nx in (x - clearance)..=(x + clearance) {
             occupy_cell(occupied, nx, ny);
+        }
+    }
+}
+
+fn max_length_in_direction(
+    start_x: i32,
+    start_y: i32,
+    dir_x: i32,
+    dir_y: i32,
+    width: u32,
+    height: u32,
+) -> i32 {
+    if dir_x == 0 && dir_y == 0 {
+        return 0;
+    }
+    let max_x = width.saturating_sub(1) as i32;
+    let max_y = height.saturating_sub(1) as i32;
+    let mut length = 0;
+    loop {
+        let next_x = start_x + dir_x * (length + 1);
+        let next_y = start_y + dir_y * (length + 1);
+        if next_x < 0 || next_y < 0 || next_x > max_x || next_y > max_y {
+            break;
+        }
+        if is_edge(next_x, next_y, width, height) {
+            break;
+        }
+        length += 1;
+    }
+    length
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    fn dirt_metrics(tiles: &[BaseTile]) -> (usize, f32) {
+        let dirt_count = tiles.iter().filter(|tile| matches!(tile, BaseTile::Dirt)).count();
+        let dirt_pct = if tiles.is_empty() {
+            0.0
+        } else {
+            dirt_count as f32 / tiles.len() as f32
+        };
+        (dirt_count, dirt_pct)
+    }
+
+    #[test]
+    fn path_map_basic_metrics() {
+        let width = 64;
+        let height = 64;
+        let mut rng = StdRng::seed_from_u64(1337);
+        let tiles = generate_path_map(width, height, &mut rng);
+        assert_eq!(tiles.len(), (width * height) as usize);
+
+        let (dirt_count, dirt_pct) = dirt_metrics(&tiles);
+        let min_dirt = (width * height) as usize / 20;
+        let max_dirt = (width * height) as usize * 3 / 4;
+        assert!(
+            dirt_count >= min_dirt,
+            "dirt tiles too few: {dirt_count} ({dirt_pct:.2}%)"
+        );
+        assert!(
+            dirt_count <= max_dirt,
+            "dirt tiles too many: {dirt_count} ({dirt_pct:.2}%)"
+        );
+    }
+
+    #[test]
+    fn skeleton_total_length_reasonable() {
+        let width = 64;
+        let height = 64;
+        let mut rng = StdRng::seed_from_u64(1337);
+        let skeleton = generate_path_skeleton(width, height, &mut rng);
+        let total_length: i32 = skeleton
+            .segments
+            .iter()
+            .map(|segment| (segment.end_x - segment.start_x).abs()
+                + (segment.end_y - segment.start_y).abs())
+            .sum();
+        assert!(total_length > 0, "skeleton has no length");
+        assert!(
+            total_length < (width * height) as i32,
+            "skeleton length too large: {total_length}"
+        );
+    }
+}
+
+fn grow_capillaries(
+    path: &mut Vec<PathPoint>,
+    occupied: &mut HashSet<(i32, i32)>,
+    start_x: i32,
+    start_y: i32,
+    dir_x: i32,
+    dir_y: i32,
+    length: i32,
+    clearance: i32,
+    width: u32,
+    height: u32,
+) {
+    let next_length = length.saturating_sub(CAPILLARY_LENGTH_STEP);
+    if next_length < CAPILLARY_LENGTH_MIN {
+        return;
+    }
+    let (fork_a, fork_b) = if dir_x.abs() >= dir_y.abs() {
+        ((0, 1), (0, -1))
+    } else {
+        ((1, 0), (-1, 0))
+    };
+    for (fx, fy) in [fork_a, fork_b] {
+        let branch = BranchSpec {
+            start_x,
+            start_y,
+            dir_x: fx,
+            dir_y: fy,
+            length: next_length,
+        };
+        if branch_fits(&branch, occupied, width, height) {
+            apply_branch(path, occupied, &branch, clearance, width, height);
         }
     }
 }
