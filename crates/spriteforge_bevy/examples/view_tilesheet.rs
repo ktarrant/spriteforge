@@ -371,7 +371,7 @@ fn spawn_map(
         }
         MapKind::Path => {
             let skeleton = path::generate_map_skeleton(width, height, &mut rng);
-            let tiles = path::rasterize_paths(width, height, &skeleton.paths);
+            let tiles = path::rasterize_skeleton(width, height, &skeleton);
             (tiles, Some(skeleton))
         }
     };

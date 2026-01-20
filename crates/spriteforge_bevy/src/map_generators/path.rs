@@ -20,17 +20,24 @@ pub struct MapArea {
     pub center_x: i32,
     pub center_y: i32,
     pub radius: i32,
+    pub area_type: Option<AreaType>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AreaType {
+    Dock,
 }
 
 #[derive(Clone, Debug)]
 pub struct MapSkeleton {
     pub paths: Vec<PathSegment>,
     pub areas: Vec<MapArea>,
+    pub water_paths: Vec<PathSegment>,
 }
 
 pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
     let skeleton = generate_map_skeleton(width, height, rng);
-    rasterize_paths(width, height, &skeleton.paths)
+    rasterize_skeleton(width, height, &skeleton)
 }
 
 pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSkeleton {
@@ -38,6 +45,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
         return MapSkeleton {
             paths: Vec::new(),
             areas: Vec::new(),
+            water_paths: Vec::new(),
         };
     }
 
@@ -50,7 +58,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
     let exit_right_x = width / 2;
     let exit_right_y = height.saturating_sub(1);
 
-    let mut areas = build_areas(width as i32, height as i32);
+    let mut areas = build_areas(width as i32, height as i32, rng);
     let mut main_segment = Vec::new();
     let mut left_segment = Vec::new();
     let mut right_segment = Vec::new();
@@ -148,6 +156,8 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
     paths.extend(points_to_segments(&left_segment, PATH_RADIUS));
     paths.extend(points_to_segments(&right_segment, PATH_RADIUS));
 
+    let water_paths = build_dock_paths(width as i32, height as i32, &areas, rng);
+
     if !areas.is_empty() {
         let mut used_areas = Vec::new();
         let fork_point = main_segment
@@ -200,13 +210,34 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
         }
     }
 
-    MapSkeleton { paths, areas }
+    MapSkeleton {
+        paths,
+        areas,
+        water_paths,
+    }
 }
 
 pub fn rasterize_paths(width: u32, height: u32, paths: &[PathSegment]) -> Vec<BaseTile> {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
     for segment in paths {
         rasterize_segment(width, height, segment, &mut cells);
+    }
+    cells
+}
+
+pub fn rasterize_skeleton(width: u32, height: u32, skeleton: &MapSkeleton) -> Vec<BaseTile> {
+    let mut cells = vec![BaseTile::Grass; (width * height) as usize];
+    for segment in &skeleton.paths {
+        rasterize_segment(width, height, segment, &mut cells);
+    }
+    for area in &skeleton.areas {
+        if area.area_type != Some(AreaType::Dock) {
+            continue;
+        }
+        fill_water_circle(width, height, area.center_x, area.center_y, area.radius, &mut cells);
+    }
+    for segment in &skeleton.water_paths {
+        rasterize_water_segment(width, height, segment, &mut cells);
     }
     cells
 }
@@ -428,7 +459,69 @@ fn rasterize_segment(width: u32, height: u32, segment: &PathSegment, cells: &mut
     }
 }
 
-fn build_areas(width: i32, height: i32) -> Vec<MapArea> {
+fn rasterize_water_segment(width: u32, height: u32, segment: &PathSegment, cells: &mut [BaseTile]) {
+    let water_radius = segment.radius.max(2);
+    let dx = (segment.end_x - segment.start_x).signum();
+    let dy = (segment.end_y - segment.start_y).signum();
+    let steps = (segment.end_x - segment.start_x).abs() + (segment.end_y - segment.start_y).abs();
+    for step in 0..=steps {
+        let x = segment.start_x + dx * step;
+        let y = segment.start_y + dy * step;
+        for ny in (y - water_radius)..=(y + water_radius) {
+            for nx in (x - water_radius)..=(x + water_radius) {
+                if nx < 0 || ny < 0 {
+                    continue;
+                }
+                let nx = nx as u32;
+                let ny = ny as u32;
+                if nx >= width || ny >= height {
+                    continue;
+                }
+                let idx = (ny * width + nx) as usize;
+                if matches!(cells[idx], BaseTile::Dirt) {
+                    continue;
+                }
+                cells[idx] = BaseTile::Water;
+            }
+        }
+    }
+}
+
+fn fill_water_circle(
+    width: u32,
+    height: u32,
+    center_x: i32,
+    center_y: i32,
+    radius: i32,
+    cells: &mut [BaseTile],
+) {
+    let radius = radius.max(1);
+    let radius_sq = radius * radius;
+    for y in (center_y - radius)..=(center_y + radius) {
+        for x in (center_x - radius)..=(center_x + radius) {
+            if x < 0 || y < 0 {
+                continue;
+            }
+            let x_u = x as u32;
+            let y_u = y as u32;
+            if x_u >= width || y_u >= height {
+                continue;
+            }
+            let dx = x - center_x;
+            let dy = y - center_y;
+            if dx * dx + dy * dy > radius_sq {
+                continue;
+            }
+            let idx = (y_u * width + x_u) as usize;
+            if matches!(cells[idx], BaseTile::Dirt) {
+                continue;
+            }
+            cells[idx] = BaseTile::Water;
+        }
+    }
+}
+
+fn build_areas(width: i32, height: i32, rng: &mut StdRng) -> Vec<MapArea> {
     if width < 5 || height < 5 {
         return Vec::new();
     }
@@ -472,10 +565,18 @@ fn build_areas(width: i32, height: i32) -> Vec<MapArea> {
                     height,
                     &area_occupied,
                 ) {
+                    let area_type = if major {
+                        None
+                    } else if rng.gen_bool(0.25) {
+                        Some(AreaType::Dock)
+                    } else {
+                        None
+                    };
                     placed = Some(MapArea {
                         center_x: cx,
                         center_y: cy,
                         radius,
+                        area_type,
                     });
                     mark_circle_occupancy(cx, cy, radius, width, height, &mut area_occupied);
                     break;
@@ -617,6 +718,49 @@ fn shrink_areas(areas: &mut [MapArea]) {
         if area.radius > 1 {
             area.radius -= 1;
         }
+    }
+}
+
+fn build_dock_paths(
+    width: i32,
+    height: i32,
+    areas: &[MapArea],
+    rng: &mut StdRng,
+) -> Vec<PathSegment> {
+    let mut segments = Vec::new();
+    for (idx, area) in areas.iter().enumerate() {
+        if area.area_type != Some(AreaType::Dock) {
+            continue;
+        }
+        let edge_point = nearest_edge_point(area.center_x, area.center_y, width, height);
+        let points = carve_connector_points(
+            (area.center_x, area.center_y),
+            edge_point,
+            width,
+            height,
+            rng,
+            areas,
+            idx,
+        );
+        segments.extend(points_to_segments(&points, CONNECTOR_RADIUS));
+    }
+    segments
+}
+
+fn nearest_edge_point(x: i32, y: i32, width: i32, height: i32) -> (i32, i32) {
+    let left = x;
+    let right = (width - 1) - x;
+    let top = y;
+    let bottom = (height - 1) - y;
+    let min_dist = left.min(right).min(top).min(bottom);
+    if min_dist == left {
+        (0, y)
+    } else if min_dist == right {
+        (width - 1, y)
+    } else if min_dist == top {
+        (x, 0)
+    } else {
+        (x, height - 1)
     }
 }
 
