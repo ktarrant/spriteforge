@@ -4,6 +4,7 @@ use rand::Rng;
 use crate::BaseTile;
 
 const PATH_RADIUS: i32 = 1;
+const CONNECTOR_RADIUS: i32 = 0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PathSegment {
@@ -147,6 +148,58 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
     paths.extend(points_to_segments(&left_segment, PATH_RADIUS));
     paths.extend(points_to_segments(&right_segment, PATH_RADIUS));
 
+    if !areas.is_empty() {
+        let mut used_areas = Vec::new();
+        let fork_point = main_segment
+            .last()
+            .copied()
+            .unwrap_or((fork_x as i32, fork_y as i32));
+
+        let connectors = [
+            (width as i32 / 6, height as i32 / 4, ConnectorTarget::LeftFork),
+            (width as i32 / 2, height as i32 / 5, ConnectorTarget::MainPath),
+            (
+                3 * width as i32 / 4,
+                5 * height as i32 / 6,
+                ConnectorTarget::RightFork,
+            ),
+            (3 * width as i32 / 4, height as i32 / 2, ConnectorTarget::MainPath),
+            (width as i32 / 4, 3 * height as i32 / 4, ConnectorTarget::ForkPoint),
+        ];
+
+        for (target_x, target_y, target) in connectors {
+            let area_index = find_nearest_area_index(&areas, (target_x, target_y), &used_areas)
+                .or_else(|| find_nearest_area_index(&areas, (target_x, target_y), &[]));
+            let Some(area_index) = area_index else {
+                continue;
+            };
+            if !used_areas.contains(&area_index) {
+                used_areas.push(area_index);
+            }
+            let area = areas[area_index];
+            let start = (area.center_x, area.center_y);
+            let end = match target {
+                ConnectorTarget::LeftFork => find_nearest_point(&left_segment, start),
+                ConnectorTarget::RightFork => find_nearest_point(&right_segment, start),
+                ConnectorTarget::MainPath => find_nearest_point(&main_segment, start),
+                ConnectorTarget::ForkPoint => Some(fork_point),
+            };
+            let Some(end) = end else {
+                continue;
+            };
+            let connector_points = carve_connector_points(
+                start,
+                end,
+                width as i32,
+                height as i32,
+                rng,
+                &areas,
+                area_index,
+            );
+            paths.extend(points_to_segments(&connector_points, CONNECTOR_RADIUS));
+        }
+    }
+
     MapSkeleton { paths, areas }
 }
 
@@ -234,6 +287,79 @@ fn carve_path_segment_points_avoiding(
                 width as i32,
                 height as i32,
                 area_occupied,
+                &mut segment,
+            ) {
+                continue;
+            }
+            break;
+        }
+    }
+
+    segment
+}
+
+fn carve_connector_points(
+    start: (i32, i32),
+    end: (i32, i32),
+    width: i32,
+    height: i32,
+    rng: &mut StdRng,
+    areas: &[MapArea],
+    allowed_area: usize,
+) -> Vec<(i32, i32)> {
+    let mut segment = Vec::new();
+    let mut x = start.0;
+    let mut y = start.1;
+    let mut last_dir = (0, 0);
+    let max_steps = (width * height * 4).max(1) as usize;
+    let mut steps = 0usize;
+
+    segment.push((x, y));
+    while (x, y) != end && steps < max_steps {
+        steps += 1;
+        let dx = (end.0 - x).signum();
+        let dy = (end.1 - y).signum();
+        let mut moves = Vec::with_capacity(4);
+        moves.push((dx, 0));
+        moves.push((0, dy));
+        if rng.gen_bool(0.45) {
+            moves.swap(0, 1);
+        }
+        if moves.len() > 1 && rng.gen_bool(0.35) {
+            let last = moves.len() - 1;
+            moves.swap(0, last);
+        }
+
+        let mut moved = false;
+        for (mx, my) in moves {
+            if mx == 0 && my == 0 {
+                continue;
+            }
+            let nx = x + mx;
+            let ny = y + my;
+            if nx < 0 || ny < 0 || nx >= width || ny >= height {
+                continue;
+            }
+            if is_blocked(nx, ny, areas, allowed_area) {
+                continue;
+            }
+            x = nx;
+            y = ny;
+            last_dir = (mx, my);
+            segment.push((x, y));
+            moved = true;
+            break;
+        }
+
+        if !moved {
+            if try_detour_connector(
+                &mut x,
+                &mut y,
+                &mut last_dir,
+                width,
+                height,
+                areas,
+                allowed_area,
                 &mut segment,
             ) {
                 continue;
@@ -434,6 +560,43 @@ fn mark_circle_occupancy(
     }
 }
 
+fn find_nearest_area_index(
+    areas: &[MapArea],
+    target: (i32, i32),
+    used: &[usize],
+) -> Option<usize> {
+    let mut best = None;
+    let mut best_dist = i32::MAX;
+    for (idx, area) in areas.iter().enumerate() {
+        if used.contains(&idx) {
+            continue;
+        }
+        let dx = area.center_x - target.0;
+        let dy = area.center_y - target.1;
+        let dist = dx * dx + dy * dy;
+        if dist < best_dist {
+            best_dist = dist;
+            best = Some(idx);
+        }
+    }
+    best
+}
+
+fn find_nearest_point(points: &[(i32, i32)], target: (i32, i32)) -> Option<(i32, i32)> {
+    let mut best = None;
+    let mut best_dist = i32::MAX;
+    for &(x, y) in points {
+        let dx = x - target.0;
+        let dy = y - target.1;
+        let dist = dx * dx + dy * dy;
+        if dist < best_dist {
+            best_dist = dist;
+            best = Some((x, y));
+        }
+    }
+    best
+}
+
 fn build_area_occupancy(width: i32, height: i32, areas: &[MapArea]) -> Vec<bool> {
     let mut occupied = vec![false; (width * height) as usize];
     for area in areas {
@@ -455,6 +618,65 @@ fn shrink_areas(areas: &mut [MapArea]) {
             area.radius -= 1;
         }
     }
+}
+
+fn is_blocked(x: i32, y: i32, areas: &[MapArea], allowed_area: usize) -> bool {
+    for (idx, area) in areas.iter().enumerate() {
+        if idx == allowed_area {
+            continue;
+        }
+        let dx = x - area.center_x;
+        let dy = y - area.center_y;
+        if dx * dx + dy * dy <= area.radius * area.radius {
+            return true;
+        }
+    }
+    false
+}
+
+fn try_detour_connector(
+    x: &mut i32,
+    y: &mut i32,
+    last_dir: &mut (i32, i32),
+    width: i32,
+    height: i32,
+    areas: &[MapArea],
+    allowed_area: usize,
+    segment: &mut Vec<(i32, i32)>,
+) -> bool {
+    let (dx, dy) = *last_dir;
+    if dx == 0 && dy == 0 {
+        return false;
+    }
+    let detours = if dx != 0 {
+        [(0, 1), (0, -1)]
+    } else {
+        [(1, 0), (-1, 0)]
+    };
+    for (mx, my) in detours {
+        let nx = *x + mx;
+        let ny = *y + my;
+        if nx < 0 || ny < 0 || nx >= width || ny >= height {
+            continue;
+        }
+        if is_blocked(nx, ny, areas, allowed_area) {
+            continue;
+        }
+        *x = nx;
+        *y = ny;
+        *last_dir = (mx, my);
+        segment.push((*x, *y));
+        return true;
+    }
+    false
+}
+
+#[derive(Clone, Copy)]
+enum ConnectorTarget {
+    LeftFork,
+    MainPath,
+    RightFork,
+    ForkPoint,
 }
 
 fn try_detour(
