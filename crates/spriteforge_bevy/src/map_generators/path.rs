@@ -6,27 +6,39 @@ use crate::BaseTile;
 const PATH_RADIUS: i32 = 1;
 
 #[derive(Clone, Copy, Debug)]
-struct PathSegment {
-    start_x: i32,
-    start_y: i32,
-    end_x: i32,
-    end_y: i32,
-    radius: i32,
+pub struct PathSegment {
+    pub start_x: i32,
+    pub start_y: i32,
+    pub end_x: i32,
+    pub end_y: i32,
+    pub radius: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MapArea {
+    pub min_x: i32,
+    pub min_y: i32,
+    pub max_x: i32,
+    pub max_y: i32,
 }
 
 #[derive(Clone, Debug)]
-struct PathSkeleton {
-    segments: Vec<PathSegment>,
+pub struct MapSkeleton {
+    pub paths: Vec<PathSegment>,
+    pub areas: Vec<MapArea>,
 }
 
 pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
-    let skeleton = generate_path_skeleton(width, height, rng);
-    rasterize_skeleton(width, height, &skeleton)
+    let skeleton = generate_map_skeleton(width, height, rng);
+    rasterize_paths(width, height, &skeleton.paths)
 }
 
-fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkeleton {
+pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSkeleton {
     if width == 0 || height == 0 {
-        return PathSkeleton { segments: Vec::new() };
+        return MapSkeleton {
+            paths: Vec::new(),
+            areas: Vec::new(),
+        };
     }
 
     let start_x = width.saturating_sub(1);
@@ -69,17 +81,18 @@ fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkel
         rng,
     );
 
-    let mut segments = Vec::new();
-    segments.extend(points_to_segments(&main_segment, PATH_RADIUS));
-    segments.extend(points_to_segments(&left_segment, PATH_RADIUS));
-    segments.extend(points_to_segments(&right_segment, PATH_RADIUS));
+    let mut paths = Vec::new();
+    paths.extend(points_to_segments(&main_segment, PATH_RADIUS));
+    paths.extend(points_to_segments(&left_segment, PATH_RADIUS));
+    paths.extend(points_to_segments(&right_segment, PATH_RADIUS));
 
-    PathSkeleton { segments }
+    let areas = build_areas(width as i32, height as i32, fork_x as i32, fork_y as i32);
+    MapSkeleton { paths, areas }
 }
 
-fn rasterize_skeleton(width: u32, height: u32, skeleton: &PathSkeleton) -> Vec<BaseTile> {
+pub fn rasterize_paths(width: u32, height: u32, paths: &[PathSegment]) -> Vec<BaseTile> {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
-    for segment in &skeleton.segments {
+    for segment in paths {
         rasterize_segment(width, height, segment, &mut cells);
     }
     cells
@@ -181,6 +194,46 @@ fn rasterize_segment(width: u32, height: u32, segment: &PathSegment, cells: &mut
     }
 }
 
+fn build_areas(width: i32, height: i32, fork_x: i32, fork_y: i32) -> Vec<MapArea> {
+    let mid_left_x = (fork_x / 2).max(1);
+    let mid_right_x = ((fork_x + width) / 2).min(width.saturating_sub(2));
+    let lower_max_y = fork_y.saturating_sub(1).max(1);
+    let top_min_y = fork_y.saturating_sub(1).min(height.saturating_sub(2));
+
+    let left_low = MapArea {
+        min_x: 1,
+        min_y: 1,
+        max_x: mid_left_x,
+        max_y: (lower_max_y / 2).max(1),
+    };
+    let left_high = MapArea {
+        min_x: 1,
+        min_y: (lower_max_y / 2).max(1),
+        max_x: mid_left_x,
+        max_y: lower_max_y,
+    };
+    let right_low = MapArea {
+        min_x: mid_right_x,
+        min_y: 1,
+        max_x: width.saturating_sub(2),
+        max_y: (lower_max_y / 2).max(1),
+    };
+    let right_high = MapArea {
+        min_x: mid_right_x,
+        min_y: (lower_max_y / 2).max(1),
+        max_x: width.saturating_sub(2),
+        max_y: lower_max_y,
+    };
+    let top_between = MapArea {
+        min_x: mid_left_x,
+        min_y: top_min_y,
+        max_x: mid_right_x,
+        max_y: height.saturating_sub(2),
+    };
+
+    vec![left_low, left_high, right_low, right_high, top_between]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,9 +275,9 @@ mod tests {
         let width = 64;
         let height = 64;
         let mut rng = StdRng::seed_from_u64(1337);
-        let skeleton = generate_path_skeleton(width, height, &mut rng);
+        let skeleton = generate_map_skeleton(width, height, &mut rng);
         let total_length: i32 = skeleton
-            .segments
+            .paths
             .iter()
             .map(|segment| (segment.end_x - segment.start_x).abs()
                 + (segment.end_y - segment.start_y).abs())

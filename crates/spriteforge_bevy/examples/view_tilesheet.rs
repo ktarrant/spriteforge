@@ -13,8 +13,8 @@ use spriteforge_bevy::{
     build_render_layers,
     load_tilesheet_metadata,
     map_generators::{path, terrain},
-    BaseTile, TileSelectedEvent, TileSelectionPlugin, TileSelectionSettings, TileSelectionState,
-    TilesheetMetadata,
+    BaseTile, MapSkeleton, MiniMapPlugin, MiniMapSource, TileSelectedEvent,
+    TileSelectionPlugin, TileSelectionSettings, TileSelectionState, TilesheetMetadata,
 };
 use std::path::PathBuf;
 
@@ -111,12 +111,14 @@ struct MapEntities {
 struct MapSpawn {
     entities: MapEntities,
     base_tiles: Vec<BaseTile>,
+    skeleton: Option<MapSkeleton>,
 }
 
 #[derive(Resource)]
 struct MapTileData {
     tiles: Vec<BaseTile>,
     map_size: TilemapSize,
+    skeleton: Option<MapSkeleton>,
 }
 
 #[derive(Resource)]
@@ -161,6 +163,7 @@ fn main() {
         .add_plugins(MaterialTilemapPlugin::<WaterFoamMaterial>::default())
         .insert_resource(map_kind)
         .add_plugins(TileSelectionPlugin)
+        .add_plugins(MiniMapPlugin)
         .init_resource::<OverlayState>()
         .insert_resource(TilesheetPaths {
             grass_image: PathBuf::from(GRASS_IMAGE),
@@ -325,14 +328,20 @@ fn setup(
         grid_size,
     };
     let seed = 1337;
-    let entities = spawn_map(&mut commands, &assets, seed, *map_kind);
+    let spawn = spawn_map(&mut commands, &assets, seed, *map_kind);
     commands.insert_resource(assets);
     commands.insert_resource(MapSeed(seed));
-    let primary_map = entities.entities.primary_map;
-    commands.insert_resource(entities.entities);
+    let primary_map = spawn.entities.primary_map;
+    commands.insert_resource(spawn.entities);
     commands.insert_resource(MapTileData {
-        tiles: entities.base_tiles,
+        tiles: spawn.base_tiles.clone(),
         map_size: map_size_copy,
+        skeleton: spawn.skeleton.clone(),
+    });
+    commands.insert_resource(MiniMapSource {
+        tiles: spawn.base_tiles,
+        map_size: map_size_copy,
+        skeleton: spawn.skeleton,
     });
     commands.insert_resource(TileSelectionSettings::new(primary_map));
     spawn_selected_tile_ui(&mut commands, &asset_server);
@@ -349,14 +358,18 @@ fn spawn_map(
         MapKind::Path => (PATH_MAP_WIDTH, PATH_MAP_HEIGHT),
         MapKind::Terrain => (MAP_WIDTH, MAP_HEIGHT),
     };
-    let base_tiles = match map_kind {
+    let (base_tiles, skeleton) = match map_kind {
         MapKind::Terrain => {
             let mut tiles = terrain::generate_terrain_map(width, height, &mut rng);
             terrain::smooth_terrain(&mut tiles, width, height, CLUMP_PASSES);
             terrain::reduce_water_islands(&mut tiles, width, height, WATER_PASS_PASSES);
-            tiles
+            (tiles, None)
         }
-        MapKind::Path => path::generate_path_map(width, height, &mut rng),
+        MapKind::Path => {
+            let skeleton = path::generate_map_skeleton(width, height, &mut rng);
+            let tiles = path::rasterize_paths(width, height, &skeleton.paths);
+            (tiles, Some(skeleton))
+        }
     };
     let layers = build_render_layers(
         &base_tiles,
@@ -571,6 +584,7 @@ fn spawn_map(
         selected_map: selected_entity,
         },
         base_tiles,
+        skeleton,
     }
 }
 
@@ -744,6 +758,7 @@ fn regenerate_map_on_space(
     mut entities: ResMut<MapEntities>,
     map_kind: Res<MapKind>,
     mut tile_data: ResMut<MapTileData>,
+    mut minimap: ResMut<MiniMapSource>,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
         return;
@@ -770,8 +785,12 @@ fn regenerate_map_on_space(
     seed.0 = seed_rng.next_u64();
     let spawn = spawn_map(&mut commands, &assets, seed.0, *map_kind);
     *entities = spawn.entities;
-    tile_data.tiles = spawn.base_tiles;
+    tile_data.tiles = spawn.base_tiles.clone();
     tile_data.map_size = assets.map_size;
+    tile_data.skeleton = spawn.skeleton.clone();
+    minimap.tiles = spawn.base_tiles;
+    minimap.map_size = assets.map_size;
+    minimap.skeleton = spawn.skeleton;
     selection_settings.target_map = Some(entities.primary_map);
 }
 

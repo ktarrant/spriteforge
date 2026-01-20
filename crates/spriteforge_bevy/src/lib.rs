@@ -1,7 +1,10 @@
 use serde::Deserialize;
 use std::path::Path;
 
+pub mod minimap;
 pub mod selection;
+pub use map_generators::path::{MapArea, MapSkeleton, PathSegment};
+pub use minimap::{MiniMapPlugin, MiniMapSettings, MiniMapSource, MiniMapState};
 pub use selection::{TileSelectedEvent, TileSelectionPlugin, TileSelectionSettings, TileSelectionState};
 
 #[derive(Debug, Deserialize, Clone)]
