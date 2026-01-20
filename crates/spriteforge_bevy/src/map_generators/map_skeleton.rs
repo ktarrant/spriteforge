@@ -49,6 +49,8 @@ pub struct MapAreaConfig {
     pub y: f32,
     #[serde(default)]
     pub major: bool,
+    #[serde(default)]
+    pub connect_to: Option<ConnectorTargetConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,6 +59,14 @@ pub struct MapSkeletonConfig {
     pub fork: MapPointConfig,
     pub exits: Vec<MapPointConfig>,
     pub areas: Vec<MapAreaConfig>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorTargetConfig {
+    ForkAny,
+    MainPath,
+    ForkPoint,
 }
 
 pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSkeleton {
@@ -185,9 +195,7 @@ pub fn generate_map_skeleton_with_config(
             let area = areas[area_index];
             let start = (area.center_x, area.center_y);
             let end = match target {
-                ConnectorTarget::LeftFork | ConnectorTarget::RightFork => {
-                    find_nearest_point_on_segments(&fork_segments, start)
-                }
+                ConnectorTarget::ForkAny => find_nearest_point_on_segments(&fork_segments, start),
                 ConnectorTarget::MainPath => find_nearest_point(&main_segment, start),
                 ConnectorTarget::ForkPoint => Some(fork_point),
             };
@@ -232,26 +240,31 @@ fn default_map_skeleton_config() -> MapSkeletonConfig {
                 x: 1.0 / 6.0,
                 y: 1.0 / 4.0,
                 major: false,
+                connect_to: Some(ConnectorTargetConfig::ForkAny),
             },
             MapAreaConfig {
                 x: 1.0 / 2.0,
                 y: 1.0 / 5.0,
                 major: false,
+                connect_to: Some(ConnectorTargetConfig::MainPath),
             },
             MapAreaConfig {
                 x: 3.0 / 4.0,
                 y: 5.0 / 6.0,
                 major: false,
+                connect_to: Some(ConnectorTargetConfig::ForkAny),
             },
             MapAreaConfig {
                 x: 3.0 / 4.0,
                 y: 1.0 / 2.0,
                 major: false,
+                connect_to: Some(ConnectorTargetConfig::MainPath),
             },
             MapAreaConfig {
                 x: 1.0 / 4.0,
                 y: 3.0 / 4.0,
                 major: true,
+                connect_to: Some(ConnectorTargetConfig::ForkPoint),
             },
         ],
     }
@@ -348,22 +361,12 @@ fn connector_targets_from_config(
     height: i32,
 ) -> Vec<((i32, i32), ConnectorTarget)> {
     let mut targets = Vec::new();
-    let connector_roles = [
-        ConnectorTarget::LeftFork,
-        ConnectorTarget::MainPath,
-        ConnectorTarget::RightFork,
-        ConnectorTarget::MainPath,
-        ConnectorTarget::ForkPoint,
-    ];
-    for (index, role) in connector_roles.iter().enumerate() {
-        if let Some(area) = config.areas.get(index) {
-            let point = resolve_point(
-                MapPointConfig { x: area.x, y: area.y },
-                width,
-                height,
-            );
-            targets.push((point, *role));
-        }
+    for area in &config.areas {
+        let Some(role) = area.connect_to else {
+            continue;
+        };
+        let point = resolve_point(MapPointConfig { x: area.x, y: area.y }, width, height);
+        targets.push((point, ConnectorTarget::from(role)));
     }
     targets
 }
@@ -870,8 +873,17 @@ fn try_detour(
 
 #[derive(Clone, Copy)]
 enum ConnectorTarget {
-    LeftFork,
+    ForkAny,
     MainPath,
-    RightFork,
     ForkPoint,
+}
+
+impl From<ConnectorTargetConfig> for ConnectorTarget {
+    fn from(value: ConnectorTargetConfig) -> Self {
+        match value {
+            ConnectorTargetConfig::ForkAny => ConnectorTarget::ForkAny,
+            ConnectorTargetConfig::MainPath => ConnectorTarget::MainPath,
+            ConnectorTargetConfig::ForkPoint => ConnectorTarget::ForkPoint,
+        }
+    }
 }

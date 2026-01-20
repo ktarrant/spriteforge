@@ -6,10 +6,10 @@
     { "x": 0.5, "y": 1.0 }
   ],
   "areas": [
-    { "x": 0.1667, "y": 0.25, "major": false },
-    { "x": 0.5, "y": 0.2, "major": false },
-    { "x": 0.75, "y": 0.8333, "major": false },
-    { "x": 0.75, "y": 0.5, "major": false },
-    { "x": 0.25, "y": 0.75, "major": true }
+    { "x": 0.1667, "y": 0.25, "major": false, "connect_to": "fork_any" },
+    { "x": 0.5, "y": 0.2, "major": false, "connect_to": "main_path" },
+    { "x": 0.75, "y": 0.8333, "major": false, "connect_to": "fork_any" },
+    { "x": 0.75, "y": 0.5, "major": false, "connect_to": "main_path" },
+    { "x": 0.25, "y": 0.75, "major": true, "connect_to": "fork_point" }
   ]
 }
