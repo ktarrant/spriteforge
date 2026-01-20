@@ -65,6 +65,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
             height,
             rng,
             &area_occupied,
+            (0, 0),
         );
         if main_segment.is_empty() {
             shrink_areas(&mut areas);
@@ -82,6 +83,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
             height,
             rng,
             &area_occupied,
+            (-1, 0),
         );
         right_segment = carve_path_segment_points_avoiding(
             fork_px,
@@ -92,6 +94,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
             height,
             rng,
             &area_occupied,
+            (0, 1),
         );
         if !left_segment.is_empty() && !right_segment.is_empty() {
             break;
@@ -110,6 +113,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
             height,
             rng,
             &area_occupied,
+            (0, 0),
         );
         let (fork_px, fork_py) = *main_segment
             .last()
@@ -123,6 +127,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
             height,
             rng,
             &area_occupied,
+            (-1, 0),
         );
         right_segment = carve_path_segment_points_avoiding(
             fork_px,
@@ -133,6 +138,7 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
             height,
             rng,
             &area_occupied,
+            (0, 1),
         );
     }
 
@@ -161,6 +167,7 @@ fn carve_path_segment_points_avoiding(
     height: u32,
     rng: &mut StdRng,
     area_occupied: &[bool],
+    bias_dir: (i32, i32),
 ) -> Vec<(i32, i32)> {
     let mut segment = Vec::new();
     let mut x = start_x;
@@ -174,9 +181,23 @@ fn carve_path_segment_points_avoiding(
         steps += 1;
         let dx = (end_x - x).signum();
         let dy = (end_y - y).signum();
-        let mut moves = [(dx, 0), (0, dy)];
-        if rng.gen_bool(0.45) {
-            moves.swap(0, 1);
+        let mut moves = Vec::with_capacity(5);
+        moves.push((dx, 0));
+        moves.push((0, dy));
+        if bias_dir != (0, 0) {
+            moves.push(bias_dir);
+        }
+        if dx == 0 {
+            let wiggle_x = if rng.gen_bool(0.5) { 1 } else { -1 };
+            moves.push((wiggle_x, 0));
+        }
+        if dy == 0 {
+            let wiggle_y = if rng.gen_bool(0.5) { 1 } else { -1 };
+            moves.push((0, wiggle_y));
+        }
+        if moves.len() > 1 && rng.gen_bool(0.45) {
+            let last = moves.len() - 1;
+            moves.swap(0, last);
         }
 
         let mut moved = false;
