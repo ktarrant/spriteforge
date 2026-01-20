@@ -43,6 +43,13 @@ struct BranchSpec {
     dir_x: i32,
     dir_y: i32,
     length: i32,
+    axis: Axis,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Axis {
+    Horizontal,
+    Vertical,
 }
 
 pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
@@ -134,18 +141,12 @@ fn generate_path_skeleton(width: u32, height: u32, rng: &mut StdRng) -> PathSkel
             apply_branch(
                 &mut path,
                 &mut occupied,
+                &mut segments,
                 &branch,
                 BRANCH_CLEARANCE,
                 width,
                 height,
             );
-            segments.push(PathSegment {
-                start_x: branch.start_x,
-                start_y: branch.start_y,
-                end_x: branch.start_x + branch.dir_x * branch.length,
-                end_y: branch.start_y + branch.dir_y * branch.length,
-                radius: BRANCH_RADIUS,
-            });
         }
     }
 
@@ -358,12 +359,18 @@ fn pick_branch_start(
             continue;
         }
         let length = rng.gen_range(BRANCH_LENGTH_MIN..=BRANCH_LENGTH_MAX.min(max_length));
+        let axis = if branch_dx != 0 {
+            Axis::Horizontal
+        } else {
+            Axis::Vertical
+        };
         return Some(BranchSpec {
             start_x: sx,
             start_y: sy,
             dir_x: branch_dx,
             dir_y: branch_dy,
             length,
+            axis,
         });
     }
     None
@@ -401,14 +408,63 @@ fn branch_fits(
     true
 }
 
+fn branch_fits_allow_start_overlap(
+    branch: &BranchSpec,
+    occupied: &HashSet<(i32, i32)>,
+    width: u32,
+    height: u32,
+    clearance: i32,
+) -> bool {
+    let max_length = max_length_in_direction(
+        branch.start_x,
+        branch.start_y,
+        branch.dir_x,
+        branch.dir_y,
+        width,
+        height,
+    );
+    if branch.length > max_length {
+        return false;
+    }
+    let max_x = width.saturating_sub(1) as i32;
+    let max_y = height.saturating_sub(1) as i32;
+    for step in 1..=branch.length {
+        let x = branch.start_x + branch.dir_x * step;
+        let y = branch.start_y + branch.dir_y * step;
+        if x < 0 || y < 0 || x > max_x || y > max_y {
+            return false;
+        }
+        if is_edge(x, y, width, height) {
+            return false;
+        }
+        if occupied.contains(&(x, y)) {
+            let allow_overlap = step as i32 <= clearance
+                && (x - branch.start_x).abs() <= clearance
+                && (y - branch.start_y).abs() <= clearance;
+            if !allow_overlap {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 fn apply_branch(
     path: &mut Vec<PathPoint>,
     occupied: &mut HashSet<(i32, i32)>,
+    segments: &mut Vec<PathSegment>,
     branch: &BranchSpec,
     clearance: i32,
     width: u32,
     height: u32,
 ) {
+    segments.push(PathSegment {
+        start_x: branch.start_x,
+        start_y: branch.start_y,
+        end_x: branch.start_x + branch.dir_x * branch.length,
+        end_y: branch.start_y + branch.dir_y * branch.length,
+        radius: BRANCH_RADIUS,
+    });
     let mut end_x = branch.start_x;
     let mut end_y = branch.start_y;
     for step in 1..=branch.length {
@@ -426,10 +482,10 @@ fn apply_branch(
     grow_capillaries(
         path,
         occupied,
+        segments,
         end_x,
         end_y,
-        branch.dir_x,
-        branch.dir_y,
+        branch.axis,
         branch.length,
         clearance,
         width,
@@ -548,10 +604,10 @@ mod tests {
 fn grow_capillaries(
     path: &mut Vec<PathPoint>,
     occupied: &mut HashSet<(i32, i32)>,
+    segments: &mut Vec<PathSegment>,
     start_x: i32,
     start_y: i32,
-    dir_x: i32,
-    dir_y: i32,
+    axis: Axis,
     length: i32,
     clearance: i32,
     width: u32,
@@ -561,10 +617,13 @@ fn grow_capillaries(
     if next_length < CAPILLARY_LENGTH_MIN {
         return;
     }
-    let (fork_a, fork_b) = if dir_x.abs() >= dir_y.abs() {
-        ((0, 1), (0, -1))
-    } else {
-        ((1, 0), (-1, 0))
+    let (fork_a, fork_b) = match axis {
+        Axis::Horizontal => ((0, 1), (0, -1)),
+        Axis::Vertical => ((1, 0), (-1, 0)),
+    };
+    let next_axis = match axis {
+        Axis::Horizontal => Axis::Vertical,
+        Axis::Vertical => Axis::Horizontal,
     };
     for (fx, fy) in [fork_a, fork_b] {
         let branch = BranchSpec {
@@ -573,9 +632,10 @@ fn grow_capillaries(
             dir_x: fx,
             dir_y: fy,
             length: next_length,
+            axis: next_axis,
         };
-        if branch_fits(&branch, occupied, width, height) {
-            apply_branch(path, occupied, &branch, clearance, width, height);
+        if branch_fits_allow_start_overlap(&branch, occupied, width, height, clearance) {
+            apply_branch(path, occupied, segments, &branch, clearance, width, height);
         }
     }
 }
