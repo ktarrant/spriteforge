@@ -6,18 +6,27 @@ use crate::BaseTile;
 
 const PATH_RADIUS: i32 = 1;
 const BRANCH_RADIUS: i32 = 0;
-const PRE_FORK_BRANCH_MIN: usize = 2;
-const PRE_FORK_BRANCH_MAX: usize = 4;
-const POST_FORK_BRANCH_MAX: usize = 2;
 const BRANCH_LENGTH_MIN: i32 = 8;
 const BRANCH_LENGTH_MAX: i32 = 12;
-const BRANCH_ATTEMPTS: usize = 12;
+const BRANCHES_PER_TRUNK: usize = 2;
+const BRANCH_CLEARANCE: i32 = 3;
+const BRANCH_SET_ATTEMPTS: usize = 12;
+const BRANCH_START_ATTEMPTS: usize = 24;
 
 #[derive(Clone, Copy)]
 struct PathPoint {
     x: i32,
     y: i32,
     radius: i32,
+}
+
+#[derive(Clone, Copy)]
+struct BranchSpec {
+    start_x: i32,
+    start_y: i32,
+    dir_x: i32,
+    dir_y: i32,
+    length: i32,
 }
 
 pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
@@ -86,43 +95,19 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
     );
     add_segment(&mut path, &mut occupied, &dead_segment, PATH_RADIUS);
 
-    let pre_fork_branches = rng.gen_range(PRE_FORK_BRANCH_MIN..=PRE_FORK_BRANCH_MAX);
-    add_branches(
-        &mut path,
-        &mut occupied,
+    if let Some(branches) = select_branch_set(
         &main_segment,
-        pre_fork_branches,
-        width,
-        height,
-        rng,
-    );
-    add_branches(
-        &mut path,
-        &mut occupied,
-        &right_segment,
-        rng.gen_range(0..=POST_FORK_BRANCH_MAX),
-        width,
-        height,
-        rng,
-    );
-    add_branches(
-        &mut path,
-        &mut occupied,
         &left_segment,
-        rng.gen_range(0..=POST_FORK_BRANCH_MAX),
+        &right_segment,
+        &occupied,
         width,
         height,
         rng,
-    );
-    add_branches(
-        &mut path,
-        &mut occupied,
-        &dead_segment,
-        rng.gen_range(0..=POST_FORK_BRANCH_MAX),
-        width,
-        height,
-        rng,
-    );
+    ) {
+        for branch in branches {
+            apply_branch(&mut path, &mut occupied, &branch, BRANCH_CLEARANCE);
+        }
+    }
 
     for point in path {
         let radius = point.radius;
@@ -184,56 +169,6 @@ fn carve_path_segment_points(
     segment
 }
 
-fn carve_path_segment_checked(
-    start_x: i32,
-    start_y: i32,
-    end_x: i32,
-    end_y: i32,
-    width: u32,
-    height: u32,
-    occupied: &HashSet<(i32, i32)>,
-    rng: &mut StdRng,
-) -> Option<Vec<(i32, i32)>> {
-    let mut segment = Vec::new();
-    let mut x = start_x;
-    let mut y = start_y;
-    let end_x_i = end_x;
-
-    segment.push((x, y));
-    let max_steps = (width * height * 4) as usize;
-    let mut steps = 0usize;
-
-    while y != end_y && steps < max_steps {
-        steps += 1;
-        if x != end_x_i && rng.gen_bool(0.45) {
-            x += if end_x_i > x { 1 } else { -1 };
-        } else {
-            y += if end_y > y { 1 } else { -1 };
-        }
-        x = x.clamp(0, width.saturating_sub(1) as i32);
-        y = y.clamp(0, height.saturating_sub(1) as i32);
-        if is_edge(x, y, width, height) || occupied.contains(&(x, y)) {
-            return None;
-        }
-        segment.push((x, y));
-    }
-
-    while x != end_x_i && steps < max_steps {
-        steps += 1;
-        x += if end_x_i > x { 1 } else { -1 };
-        x = x.clamp(0, width.saturating_sub(1) as i32);
-        if is_edge(x, y, width, height) || occupied.contains(&(x, y)) {
-            return None;
-        }
-        segment.push((x, y));
-    }
-
-    if steps >= max_steps {
-        return None;
-    }
-    Some(segment)
-}
-
 fn add_segment(
     path: &mut Vec<PathPoint>,
     occupied: &mut HashSet<(i32, i32)>,
@@ -242,78 +177,7 @@ fn add_segment(
 ) {
     for &(x, y) in segment {
         path.push(PathPoint { x, y, radius });
-        occupied.insert((x, y));
-    }
-}
-
-fn add_branches(
-    path: &mut Vec<PathPoint>,
-    occupied: &mut HashSet<(i32, i32)>,
-    trunk: &[(i32, i32)],
-    count: usize,
-    width: u32,
-    height: u32,
-    rng: &mut StdRng,
-) {
-    if trunk.len() < 2 || count == 0 || width <= 2 || height <= 2 {
-        return;
-    }
-    let min_x = 1;
-    let min_y = 1;
-    let max_x = width.saturating_sub(2) as i32;
-    let max_y = height.saturating_sub(2) as i32;
-    let max_start_index = trunk.len().saturating_sub(2);
-    for _ in 0..count {
-        let mut carved = None;
-        for _ in 0..BRANCH_ATTEMPTS {
-            let start_idx = rng.gen_range(0..=max_start_index);
-            let (sx, sy) = trunk[start_idx];
-            if is_edge(sx, sy, width, height) {
-                continue;
-            }
-            let (tx, ty) = if start_idx + 1 < trunk.len() {
-                trunk[start_idx + 1]
-            } else {
-                trunk[start_idx.saturating_sub(1)]
-            };
-            let dir_x = tx - sx;
-            let dir_y = ty - sy;
-            let length = rng.gen_range(BRANCH_LENGTH_MIN..=BRANCH_LENGTH_MAX);
-            let (dx, dy) = if dir_x.abs() >= dir_y.abs() {
-                let sign = if rng.gen_bool(0.5) { 1 } else { -1 };
-                (0, sign * length)
-            } else {
-                let sign = if rng.gen_bool(0.5) { 1 } else { -1 };
-                (sign * length, 0)
-            };
-            if dx == 0 && dy == 0 {
-                continue;
-            }
-            let mut ex = (sx + dx).clamp(min_x, max_x);
-            let mut ey = (sy + dy).clamp(min_y, max_y);
-            if ex == sx && ey == sy {
-                continue;
-            }
-            if occupied.contains(&(ex, ey)) {
-                continue;
-            }
-            if let Some(segment) = carve_path_segment_checked(
-                sx,
-                sy,
-                ex,
-                ey,
-                width,
-                height,
-                occupied,
-                rng,
-            ) {
-                carved = Some(segment);
-                break;
-            }
-        }
-        if let Some(segment) = carved {
-            add_segment(path, occupied, &segment, BRANCH_RADIUS);
-        }
+        occupy_cell(occupied, x, y);
     }
 }
 
@@ -324,4 +188,155 @@ fn is_edge(x: i32, y: i32, width: u32, height: u32) -> bool {
     let max_x = width.saturating_sub(1) as i32;
     let max_y = height.saturating_sub(1) as i32;
     x <= 0 || y <= 0 || x >= max_x || y >= max_y
+}
+
+fn select_branch_set(
+    main_segment: &[(i32, i32)],
+    left_segment: &[(i32, i32)],
+    right_segment: &[(i32, i32)],
+    occupied: &HashSet<(i32, i32)>,
+    width: u32,
+    height: u32,
+    rng: &mut StdRng,
+) -> Option<Vec<BranchSpec>> {
+    if width <= 2 || height <= 2 {
+        return None;
+    }
+    let trunks = [main_segment, left_segment, right_segment];
+    let sides = [-1, 1];
+    for _ in 0..BRANCH_SET_ATTEMPTS {
+        let mut specs = Vec::with_capacity(BRANCHES_PER_TRUNK * trunks.len());
+        let mut valid = true;
+        for trunk in trunks {
+            for &side in &sides {
+                if let Some(spec) = pick_branch_start(trunk, side, rng, width, height) {
+                    specs.push(spec);
+                } else {
+                    valid = false;
+                    break;
+                }
+            }
+            if !valid {
+                break;
+            }
+        }
+        if !valid {
+            continue;
+        }
+        let mut temp_occupied = occupied.clone();
+        for spec in &specs {
+            if !branch_fits(spec, &temp_occupied, width, height) {
+                valid = false;
+                break;
+            }
+            mark_branch_occupied(&mut temp_occupied, spec, BRANCH_CLEARANCE);
+        }
+        if valid {
+            return Some(specs);
+        }
+    }
+    None
+}
+
+fn pick_branch_start(
+    trunk: &[(i32, i32)],
+    side: i32,
+    rng: &mut StdRng,
+    width: u32,
+    height: u32,
+) -> Option<BranchSpec> {
+    if trunk.len() < 2 {
+        return None;
+    }
+    let max_start_index = trunk.len().saturating_sub(2);
+    for _ in 0..BRANCH_START_ATTEMPTS {
+        let start_idx = rng.gen_range(1..=max_start_index);
+        let (sx, sy) = trunk[start_idx];
+        if is_edge(sx, sy, width, height) {
+            continue;
+        }
+        let (tx, ty) = trunk[start_idx + 1];
+        let dir_x = tx - sx;
+        let dir_y = ty - sy;
+        if dir_x == 0 && dir_y == 0 {
+            continue;
+        }
+        let (branch_dx, branch_dy) = if dir_x.abs() >= dir_y.abs() {
+            (0, side)
+        } else {
+            (side, 0)
+        };
+        let length = rng.gen_range(BRANCH_LENGTH_MIN..=BRANCH_LENGTH_MAX);
+        return Some(BranchSpec {
+            start_x: sx,
+            start_y: sy,
+            dir_x: branch_dx,
+            dir_y: branch_dy,
+            length,
+        });
+    }
+    None
+}
+
+fn branch_fits(
+    branch: &BranchSpec,
+    occupied: &HashSet<(i32, i32)>,
+    width: u32,
+    height: u32,
+) -> bool {
+    let max_x = width.saturating_sub(1) as i32;
+    let max_y = height.saturating_sub(1) as i32;
+    for step in 1..=branch.length {
+        let x = branch.start_x + branch.dir_x * step;
+        let y = branch.start_y + branch.dir_y * step;
+        if x < 0 || y < 0 || x > max_x || y > max_y {
+            return false;
+        }
+        if is_edge(x, y, width, height) || occupied.contains(&(x, y)) {
+            return false;
+        }
+    }
+    true
+}
+
+fn apply_branch(
+    path: &mut Vec<PathPoint>,
+    occupied: &mut HashSet<(i32, i32)>,
+    branch: &BranchSpec,
+    clearance: i32,
+) {
+    for step in 1..=branch.length {
+        let x = branch.start_x + branch.dir_x * step;
+        let y = branch.start_y + branch.dir_y * step;
+        path.push(PathPoint {
+            x,
+            y,
+            radius: BRANCH_RADIUS,
+        });
+        mark_with_clearance(occupied, x, y, clearance);
+    }
+}
+
+fn mark_branch_occupied(
+    occupied: &mut HashSet<(i32, i32)>,
+    branch: &BranchSpec,
+    clearance: i32,
+) {
+    for step in 1..=branch.length {
+        let x = branch.start_x + branch.dir_x * step;
+        let y = branch.start_y + branch.dir_y * step;
+        mark_with_clearance(occupied, x, y, clearance);
+    }
+}
+
+fn occupy_cell(occupied: &mut HashSet<(i32, i32)>, x: i32, y: i32) {
+    occupied.insert((x, y));
+}
+
+fn mark_with_clearance(occupied: &mut HashSet<(i32, i32)>, x: i32, y: i32, clearance: i32) {
+    for ny in (y - clearance)..=(y + clearance) {
+        for nx in (x - clearance)..=(x + clearance) {
+            occupy_cell(occupied, nx, ny);
+        }
+    }
 }
