@@ -101,6 +101,18 @@ struct MapEntities {
 }
 
 #[derive(Resource)]
+struct MapTileData {
+    tiles: Vec<BaseTile>,
+    map_size: TilemapSize,
+}
+
+#[derive(Resource)]
+struct SelectedTileUi {
+    text_entity: Entity,
+    last_selected: Option<TilePos>,
+}
+
+#[derive(Resource)]
 struct MapSeed(u64);
 
 #[derive(Resource)]
@@ -162,6 +174,12 @@ fn main() {
                 update_tile_hover,
                 camera_pan,
             ),
+        )
+        .add_systems(
+            Update,
+            update_selected_tile_ui
+                .after(update_tile_selection)
+                .after(regenerate_map_on_space),
         )
         .run();
 }
@@ -226,7 +244,7 @@ fn setup(
         asset_server.load(paths.water_image.to_string_lossy().to_string());
     let water_transition_texture: Handle<Image> =
         asset_server.load(paths.water_transition_image.to_string_lossy().to_string());
-    let water_mask_texture: Handle<Image> =
+    let _water_mask_texture: Handle<Image> =
         asset_server.load(paths.water_mask_image.to_string_lossy().to_string());
     let water_transition_mask_texture: Handle<Image> =
         asset_server.load(paths.water_transition_mask_image.to_string_lossy().to_string());
@@ -235,6 +253,7 @@ fn setup(
         x: MAP_WIDTH,
         y: MAP_HEIGHT,
     };
+    let map_size_copy = map_size;
     let tile_size = TilemapTileSize {
         x: grass_meta.tile_size as f32,
         y: grass_meta.tile_size as f32,
@@ -283,10 +302,20 @@ fn setup(
     let entities = spawn_map(&mut commands, &assets, seed);
     commands.insert_resource(assets);
     commands.insert_resource(MapSeed(seed));
-    commands.insert_resource(entities);
+    commands.insert_resource(entities.entities);
+    commands.insert_resource(MapTileData {
+        tiles: entities.base_tiles,
+        map_size: map_size_copy,
+    });
+    spawn_selected_tile_ui(&mut commands, &asset_server);
 }
 
-fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntities {
+struct MapSpawn {
+    entities: MapEntities,
+    base_tiles: Vec<BaseTile>,
+}
+
+fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapSpawn {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut terrain = generate_terrain_map(MAP_WIDTH, MAP_HEIGHT, &mut rng);
     smooth_terrain(&mut terrain, MAP_WIDTH, MAP_HEIGHT, CLUMP_PASSES);
@@ -313,9 +342,9 @@ fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntit
     let water_entity = commands.spawn_empty().id();
     let mut water_transition_storage = TileStorage::empty(assets.map_size);
     let water_transition_entity = commands.spawn_empty().id();
-    let mut hover_storage = TileStorage::empty(assets.map_size);
+    let hover_storage = TileStorage::empty(assets.map_size);
     let hover_entity = commands.spawn_empty().id();
-    let mut selected_storage = TileStorage::empty(assets.map_size);
+    let selected_storage = TileStorage::empty(assets.map_size);
     let selected_entity = commands.spawn_empty().id();
 
     let mut tiles = Vec::new();
@@ -488,7 +517,8 @@ fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntit
         ..Default::default()
     });
 
-    MapEntities {
+    MapSpawn {
+        entities: MapEntities {
         tilemaps: vec![
             grass_entity,
             dirt_entity,
@@ -502,6 +532,8 @@ fn spawn_map(commands: &mut Commands, assets: &MapAssets, seed: u64) -> MapEntit
         primary_map: grass_entity,
         hover_map: hover_entity,
         selected_map: selected_entity,
+        },
+        base_tiles,
     }
 }
 
@@ -643,6 +675,70 @@ fn update_tile_hover(
     highlight.hover_entity = Some(tile_entity);
 }
 
+fn spawn_selected_tile_ui(commands: &mut Commands, _asset_server: &Res<AssetServer>) {
+    let mut text_entity = Entity::PLACEHOLDER;
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                left: Val::Px(20.0),
+                bottom: Val::Px(20.0),
+                padding: UiRect::all(Val::Px(12.0)),
+                min_width: Val::Px(220.0),
+                ..Default::default()
+            },
+            background_color: Color::srgba(0.05, 0.05, 0.05, 0.85).into(),
+            ..Default::default()
+        })
+        .with_children(|parent| {
+            text_entity = parent
+                .spawn(TextBundle::from_section(
+                    "No tile selected",
+                    TextStyle {
+                        font_size: 18.0,
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                ))
+                .id();
+        });
+    commands.insert_resource(SelectedTileUi {
+        text_entity,
+        last_selected: None,
+    });
+}
+
+fn update_selected_tile_ui(
+    mut ui: ResMut<SelectedTileUi>,
+    highlight: Res<HighlightState>,
+    tile_data: Res<MapTileData>,
+    mut text_q: Query<&mut Text>,
+) {
+    if highlight.selected == ui.last_selected {
+        return;
+    }
+    ui.last_selected = highlight.selected;
+    let Ok(mut text) = text_q.get_mut(ui.text_entity) else {
+        return;
+    };
+    let message = if let Some(tile_pos) = highlight.selected {
+        let idx = (tile_pos.y * tile_data.map_size.x + tile_pos.x) as usize;
+        let tile_type = match tile_data.tiles.get(idx) {
+            Some(BaseTile::Grass) => "Grass",
+            Some(BaseTile::Dirt) => "Dirt",
+            Some(BaseTile::Water) => "Water",
+            None => "Unknown",
+        };
+        format!(
+            "Selected Tile\nPos: {}, {}\nType: {}",
+            tile_pos.x, tile_pos.y, tile_type
+        )
+    } else {
+        "No tile selected".to_string()
+    };
+    text.sections[0].value = message;
+}
+
 fn regenerate_map_on_space(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
@@ -650,6 +746,7 @@ fn regenerate_map_on_space(
     mut seed: ResMut<MapSeed>,
     mut highlight: ResMut<HighlightState>,
     mut entities: ResMut<MapEntities>,
+    mut tile_data: ResMut<MapTileData>,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
         return;
@@ -672,7 +769,9 @@ fn regenerate_map_on_space(
 
     let mut seed_rng = StdRng::seed_from_u64(seed.0);
     seed.0 = seed_rng.next_u64();
-    *entities = spawn_map(&mut commands, &assets, seed.0);
+    let spawn = spawn_map(&mut commands, &assets, seed.0);
+    *entities = spawn.entities;
+    tile_data.tiles = spawn.base_tiles;
 }
 
 fn cursor_to_tile_pos(
