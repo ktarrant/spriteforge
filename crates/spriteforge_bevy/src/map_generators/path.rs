@@ -16,10 +16,9 @@ pub struct PathSegment {
 
 #[derive(Clone, Copy, Debug)]
 pub struct MapArea {
-    pub min_x: i32,
-    pub min_y: i32,
-    pub max_x: i32,
-    pub max_y: i32,
+    pub center_x: i32,
+    pub center_y: i32,
+    pub radius: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -50,43 +49,98 @@ pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSk
     let exit_right_x = width / 2;
     let exit_right_y = height.saturating_sub(1);
 
-    let main_segment = carve_path_segment_points(
-        start_x as i32,
-        start_y as i32,
-        fork_x as i32,
-        fork_y as i32,
-        width,
-        height,
-        rng,
-    );
-    let (fork_px, fork_py) = *main_segment
-        .last()
-        .unwrap_or(&(start_x as i32, start_y as i32));
-    let left_segment = carve_path_segment_points(
-        fork_px,
-        fork_py,
-        exit_left_x as i32,
-        exit_left_y as i32,
-        width,
-        height,
-        rng,
-    );
-    let right_segment = carve_path_segment_points(
-        fork_px,
-        fork_py,
-        exit_right_x as i32,
-        exit_right_y as i32,
-        width,
-        height,
-        rng,
-    );
+    let mut areas = build_areas(width as i32, height as i32);
+    let mut main_segment = Vec::new();
+    let mut left_segment = Vec::new();
+    let mut right_segment = Vec::new();
+
+    for _ in 0..6 {
+        let area_occupied = build_area_occupancy(width as i32, height as i32, &areas);
+        main_segment = carve_path_segment_points_avoiding(
+            start_x as i32,
+            start_y as i32,
+            fork_x as i32,
+            fork_y as i32,
+            width,
+            height,
+            rng,
+            &area_occupied,
+        );
+        if main_segment.is_empty() {
+            shrink_areas(&mut areas);
+            continue;
+        }
+        let (fork_px, fork_py) = *main_segment
+            .last()
+            .unwrap_or(&(start_x as i32, start_y as i32));
+        left_segment = carve_path_segment_points_avoiding(
+            fork_px,
+            fork_py,
+            exit_left_x as i32,
+            exit_left_y as i32,
+            width,
+            height,
+            rng,
+            &area_occupied,
+        );
+        right_segment = carve_path_segment_points_avoiding(
+            fork_px,
+            fork_py,
+            exit_right_x as i32,
+            exit_right_y as i32,
+            width,
+            height,
+            rng,
+            &area_occupied,
+        );
+        if !left_segment.is_empty() && !right_segment.is_empty() {
+            break;
+        }
+        shrink_areas(&mut areas);
+    }
+    if main_segment.is_empty() || left_segment.is_empty() || right_segment.is_empty() {
+        areas.clear();
+        let area_occupied = build_area_occupancy(width as i32, height as i32, &areas);
+        main_segment = carve_path_segment_points_avoiding(
+            start_x as i32,
+            start_y as i32,
+            fork_x as i32,
+            fork_y as i32,
+            width,
+            height,
+            rng,
+            &area_occupied,
+        );
+        let (fork_px, fork_py) = *main_segment
+            .last()
+            .unwrap_or(&(start_x as i32, start_y as i32));
+        left_segment = carve_path_segment_points_avoiding(
+            fork_px,
+            fork_py,
+            exit_left_x as i32,
+            exit_left_y as i32,
+            width,
+            height,
+            rng,
+            &area_occupied,
+        );
+        right_segment = carve_path_segment_points_avoiding(
+            fork_px,
+            fork_py,
+            exit_right_x as i32,
+            exit_right_y as i32,
+            width,
+            height,
+            rng,
+            &area_occupied,
+        );
+    }
 
     let mut paths = Vec::new();
     paths.extend(points_to_segments(&main_segment, PATH_RADIUS));
     paths.extend(points_to_segments(&left_segment, PATH_RADIUS));
     paths.extend(points_to_segments(&right_segment, PATH_RADIUS));
 
-    let areas = build_areas(width as i32, height as i32, fork_x as i32, fork_y as i32);
     MapSkeleton { paths, areas }
 }
 
@@ -98,7 +152,7 @@ pub fn rasterize_paths(width: u32, height: u32, paths: &[PathSegment]) -> Vec<Ba
     cells
 }
 
-fn carve_path_segment_points(
+fn carve_path_segment_points_avoiding(
     start_x: i32,
     start_y: i32,
     end_x: i32,
@@ -106,34 +160,67 @@ fn carve_path_segment_points(
     width: u32,
     height: u32,
     rng: &mut StdRng,
+    area_occupied: &[bool],
 ) -> Vec<(i32, i32)> {
     let mut segment = Vec::new();
     let mut x = start_x;
     let mut y = start_y;
-    let end_x_i = end_x;
-
-    segment.push((x, y));
+    let mut last_dir = (0, 0);
     let max_steps = (width * height * 4) as usize;
     let mut steps = 0usize;
 
-    while y != end_y && steps < max_steps {
+    segment.push((x, y));
+    while (x, y) != (end_x, end_y) && steps < max_steps {
         steps += 1;
-        if x != end_x_i && rng.gen_bool(0.45) {
-            x += if end_x_i > x { 1 } else { -1 };
-        } else {
-            y += if end_y > y { 1 } else { -1 };
+        let dx = (end_x - x).signum();
+        let dy = (end_y - y).signum();
+        let mut moves = [(dx, 0), (0, dy)];
+        if rng.gen_bool(0.45) {
+            moves.swap(0, 1);
         }
-        x = x.clamp(0, width.saturating_sub(1) as i32);
-        y = y.clamp(0, height.saturating_sub(1) as i32);
-        segment.push((x, y));
+
+        let mut moved = false;
+        for (mx, my) in moves {
+            if mx == 0 && my == 0 {
+                continue;
+            }
+            let nx = x + mx;
+            let ny = y + my;
+            if nx < 0
+                || ny < 0
+                || nx >= width as i32
+                || ny >= height as i32
+            {
+                continue;
+            }
+            let idx = (ny * width as i32 + nx) as usize;
+            if area_occupied[idx] {
+                continue;
+            }
+            x = nx;
+            y = ny;
+            last_dir = (mx, my);
+            segment.push((x, y));
+            moved = true;
+            break;
+        }
+
+        if !moved {
+            if try_detour(
+                &mut x,
+                &mut y,
+                &mut last_dir,
+                width as i32,
+                height as i32,
+                area_occupied,
+                &mut segment,
+            ) {
+                continue;
+            }
+            break;
+        }
     }
 
-    while x != end_x_i && steps < max_steps {
-        steps += 1;
-        x += if end_x_i > x { 1 } else { -1 };
-        x = x.clamp(0, width.saturating_sub(1) as i32);
-        segment.push((x, y));
-    }
     segment
 }
 
@@ -194,44 +281,196 @@ fn rasterize_segment(width: u32, height: u32, segment: &PathSegment, cells: &mut
     }
 }
 
-fn build_areas(width: i32, height: i32, fork_x: i32, fork_y: i32) -> Vec<MapArea> {
-    let mid_left_x = (fork_x / 2).max(1);
-    let mid_right_x = ((fork_x + width) / 2).min(width.saturating_sub(2));
-    let lower_max_y = fork_y.saturating_sub(1).max(1);
-    let top_min_y = fork_y.saturating_sub(1).min(height.saturating_sub(2));
+fn build_areas(width: i32, height: i32) -> Vec<MapArea> {
+    if width < 5 || height < 5 {
+        return Vec::new();
+    }
+    let mut area_occupied = vec![false; (width * height) as usize];
+    let min_dim = width.min(height);
+    let minor_radius = (min_dim / 10).clamp(3, 8);
+    let min_minor_radius = 2;
+    let major_radius = (min_dim / 6)
+        .max(minor_radius + 1)
+        .min((min_dim / 3).max(2));
+    let min_major_radius = (min_minor_radius + 1).min(major_radius);
+    let max_offset = (min_dim / 5).max(6).min(16);
+    let offsets = build_search_offsets(max_offset);
 
-    let left_low = MapArea {
-        min_x: 1,
-        min_y: 1,
-        max_x: mid_left_x,
-        max_y: (lower_max_y / 2).max(1),
-    };
-    let left_high = MapArea {
-        min_x: 1,
-        min_y: (lower_max_y / 2).max(1),
-        max_x: mid_left_x,
-        max_y: lower_max_y,
-    };
-    let right_low = MapArea {
-        min_x: mid_right_x,
-        min_y: 1,
-        max_x: width.saturating_sub(2),
-        max_y: (lower_max_y / 2).max(1),
-    };
-    let right_high = MapArea {
-        min_x: mid_right_x,
-        min_y: (lower_max_y / 2).max(1),
-        max_x: width.saturating_sub(2),
-        max_y: lower_max_y,
-    };
-    let top_between = MapArea {
-        min_x: mid_left_x,
-        min_y: top_min_y,
-        max_x: mid_right_x,
-        max_y: height.saturating_sub(2),
-    };
+    let targets = [
+        (width / 6, height / 4, false),
+        (width / 2, height / 5, false),
+        (3 * width / 4, 5 * height / 6, false),
+        (3 * width / 4, height / 2, false),
+        (width / 4, 3 * height / 4, true),
+    ];
 
-    vec![left_low, left_high, right_low, right_high, top_between]
+    let mut areas = Vec::new();
+    for (target_x, target_y, major) in targets {
+        let base_radius = if major { major_radius } else { minor_radius };
+        let min_radius = if major {
+            min_major_radius
+        } else {
+            min_minor_radius
+        };
+        let mut placed = None;
+        for radius in (min_radius..=base_radius).rev() {
+            for (ox, oy) in offsets.iter().copied() {
+                let cx = target_x + ox;
+                let cy = target_y + oy;
+                if circle_fits(
+                    cx,
+                    cy,
+                    radius,
+                    width,
+                    height,
+                    &area_occupied,
+                ) {
+                    placed = Some(MapArea {
+                        center_x: cx,
+                        center_y: cy,
+                        radius,
+                    });
+                    mark_circle_occupancy(cx, cy, radius, width, height, &mut area_occupied);
+                    break;
+                }
+            }
+            if placed.is_some() {
+                break;
+            }
+        }
+        if let Some(area) = placed {
+            areas.push(area);
+        }
+    }
+    areas
+}
+
+fn build_search_offsets(max_offset: i32) -> Vec<(i32, i32)> {
+    let mut offsets = Vec::new();
+    for dy in -max_offset..=max_offset {
+        for dx in -max_offset..=max_offset {
+            offsets.push((dx, dy));
+        }
+    }
+    offsets.sort_by_key(|(dx, dy)| dx.abs() + dy.abs());
+    offsets
+}
+
+fn circle_fits(
+    center_x: i32,
+    center_y: i32,
+    radius: i32,
+    width: i32,
+    height: i32,
+    area_occupied: &[bool],
+) -> bool {
+    if center_x - radius < 0
+        || center_y - radius < 0
+        || center_x + radius >= width
+        || center_y + radius >= height
+    {
+        return false;
+    }
+    let radius_sq = radius * radius;
+    for y in (center_y - radius)..=(center_y + radius) {
+        for x in (center_x - radius)..=(center_x + radius) {
+            let dx = x - center_x;
+            let dy = y - center_y;
+            if dx * dx + dy * dy > radius_sq {
+                continue;
+            }
+            let idx = (y * width + x) as usize;
+            if area_occupied[idx] {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn mark_circle_occupancy(
+    center_x: i32,
+    center_y: i32,
+    radius: i32,
+    width: i32,
+    height: i32,
+    area_occupied: &mut [bool],
+) {
+    let radius_sq = radius * radius;
+    for y in (center_y - radius)..=(center_y + radius) {
+        for x in (center_x - radius)..=(center_x + radius) {
+            if x < 0 || y < 0 || x >= width || y >= height {
+                continue;
+            }
+            let dx = x - center_x;
+            let dy = y - center_y;
+            if dx * dx + dy * dy > radius_sq {
+                continue;
+            }
+            let idx = (y * width + x) as usize;
+            area_occupied[idx] = true;
+        }
+    }
+}
+
+fn build_area_occupancy(width: i32, height: i32, areas: &[MapArea]) -> Vec<bool> {
+    let mut occupied = vec![false; (width * height) as usize];
+    for area in areas {
+        mark_circle_occupancy(
+            area.center_x,
+            area.center_y,
+            area.radius,
+            width,
+            height,
+            &mut occupied,
+        );
+    }
+    occupied
+}
+
+fn shrink_areas(areas: &mut [MapArea]) {
+    for area in areas {
+        if area.radius > 1 {
+            area.radius -= 1;
+        }
+    }
+}
+
+fn try_detour(
+    x: &mut i32,
+    y: &mut i32,
+    last_dir: &mut (i32, i32),
+    width: i32,
+    height: i32,
+    area_occupied: &[bool],
+    segment: &mut Vec<(i32, i32)>,
+) -> bool {
+    let (dx, dy) = *last_dir;
+    if dx == 0 && dy == 0 {
+        return false;
+    }
+    let detours = if dx != 0 {
+        [(0, 1), (0, -1)]
+    } else {
+        [(1, 0), (-1, 0)]
+    };
+    for (mx, my) in detours {
+        let nx = *x + mx;
+        let ny = *y + my;
+        if nx < 0 || ny < 0 || nx >= width || ny >= height {
+            continue;
+        }
+        let idx = (ny * width + nx) as usize;
+        if area_occupied[idx] {
+            continue;
+        }
+        *x = nx;
+        *y = ny;
+        *last_dir = (mx, my);
+        segment.push((*x, *y));
+        return true;
+    }
+    false
 }
 
 #[cfg(test)]

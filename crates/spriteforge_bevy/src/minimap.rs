@@ -377,15 +377,26 @@ fn draw_areas(
     size: UVec2,
 ) {
     for area in areas {
-        for x in area.min_x..=area.max_x {
-            for y in [area.min_y, area.max_y] {
-                let (rx, ry) = rotate_coord(x, y, map_size);
-                let center = minimap_center(rx, ry, settings.tile_px, offset);
-                draw_diamond(data, size, center, settings.tile_px, settings.area_color);
-            }
-        }
-        for y in area.min_y..=area.max_y {
-            for x in [area.min_x, area.max_x] {
+        let radius = area.radius.max(1);
+        let inner = (radius - 1).max(0);
+        let outer_sq = radius * radius;
+        let inner_sq = inner * inner;
+        for y in (area.center_y - radius)..=(area.center_y + radius) {
+            for x in (area.center_x - radius)..=(area.center_x + radius) {
+                if x < 0 || y < 0 {
+                    continue;
+                }
+                let x_u = x as u32;
+                let y_u = y as u32;
+                if x_u >= map_size.x || y_u >= map_size.y {
+                    continue;
+                }
+                let dx = x - area.center_x;
+                let dy = y - area.center_y;
+                let dist_sq = dx * dx + dy * dy;
+                if dist_sq > outer_sq || dist_sq < inner_sq {
+                    continue;
+                }
                 let (rx, ry) = rotate_coord(x, y, map_size);
                 let center = minimap_center(rx, ry, settings.tile_px, offset);
                 draw_diamond(data, size, center, settings.tile_px, settings.area_color);
