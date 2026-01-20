@@ -327,6 +327,7 @@ fn setup(
         tile_size,
         grid_size,
     };
+    let minimap_grid_size = assets.grid_size;
     let seed = 1337;
     let spawn = spawn_map(&mut commands, &assets, seed, *map_kind);
     commands.insert_resource(assets);
@@ -341,6 +342,9 @@ fn setup(
     commands.insert_resource(MiniMapSource {
         tiles: spawn.base_tiles,
         map_size: map_size_copy,
+        grid_size: minimap_grid_size,
+        map_type: TilemapType::Isometric(IsoCoordSystem::Diamond),
+        map_entity: Some(primary_map),
         skeleton: spawn.skeleton,
     });
     commands.insert_resource(TileSelectionSettings::new(primary_map));
@@ -790,6 +794,9 @@ fn regenerate_map_on_space(
     tile_data.skeleton = spawn.skeleton.clone();
     minimap.tiles = spawn.base_tiles;
     minimap.map_size = assets.map_size;
+    minimap.grid_size = assets.grid_size;
+    minimap.map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
+    minimap.map_entity = Some(entities.primary_map);
     minimap.skeleton = spawn.skeleton;
     selection_settings.target_map = Some(entities.primary_map);
 }

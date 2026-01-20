@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use bevy_ecs_tilemap::prelude::TilemapSize;
+use bevy::window::PrimaryWindow;
+use bevy_ecs_tilemap::prelude::{TilemapGridSize, TilemapSize, TilemapType, TilePos};
 
 use crate::map_generators::path::{MapArea, MapSkeleton, PathSegment};
 use crate::BaseTile;
@@ -10,6 +11,9 @@ use crate::BaseTile;
 pub struct MiniMapSource {
     pub tiles: Vec<BaseTile>,
     pub map_size: TilemapSize,
+    pub grid_size: TilemapGridSize,
+    pub map_type: TilemapType,
+    pub map_entity: Option<Entity>,
     pub skeleton: Option<MapSkeleton>,
 }
 
@@ -22,6 +26,7 @@ pub struct MiniMapSettings {
     pub water_color: Color,
     pub path_color: Color,
     pub area_color: Color,
+    pub camera_color: Color,
     pub background_color: Color,
     pub toggle_paths_key: KeyCode,
     pub toggle_areas_key: KeyCode,
@@ -38,6 +43,7 @@ impl Default for MiniMapSettings {
             water_color: Color::srgba(0.2, 0.35, 0.7, 1.0),
             path_color: Color::srgba(0.95, 0.95, 0.95, 0.95),
             area_color: Color::srgba(0.95, 0.75, 0.2, 0.9),
+            camera_color: Color::srgba(0.9, 0.2, 0.2, 0.9),
             background_color: Color::srgba(0.05, 0.05, 0.05, 0.85),
             toggle_paths_key: KeyCode::Digit1,
             toggle_areas_key: KeyCode::Digit2,
@@ -177,11 +183,20 @@ fn update_minimap(
     state: Res<MiniMapState>,
     minimap: Option<Res<MiniMapImage>>,
     mut images: ResMut<Assets<Image>>,
+    camera_q: Query<(&Camera, &GlobalTransform)>,
+    camera_changed: Query<(), Or<(Changed<Camera>, Changed<GlobalTransform>)>>,
+    map_q: Query<&Transform>,
+    windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     let (Some(source), Some(minimap)) = (source, minimap) else {
         return;
     };
-    if !source.is_changed() && !settings.is_changed() && !state.is_changed() {
+    let camera_dirty = camera_changed.iter().next().is_some();
+    if !source.is_changed()
+        && !settings.is_changed()
+        && !state.is_changed()
+        && !camera_dirty
+    {
         return;
     }
     let image = images.get_mut(&minimap.handle);
@@ -224,6 +239,22 @@ fn update_minimap(
                 &settings,
                 offset,
                 size,
+            );
+        }
+    }
+    if let Some(map_entity) = source.map_entity {
+        if let Ok(map_transform) = map_q.get(map_entity) {
+            draw_camera_rect(
+                &mut image.data,
+                size,
+                offset,
+                source.map_size,
+                source.grid_size,
+                source.map_type,
+                map_transform,
+                &settings,
+                &camera_q,
+                &windows,
             );
         }
     }
@@ -347,6 +378,75 @@ fn rotate_coord(x: i32, y: i32, map_size: TilemapSize) -> (i32, i32) {
     let rx: i32 = x;
     let ry: i32 = max_y - y;
     (rx, ry)
+}
+
+fn draw_camera_rect(
+    data: &mut [u8],
+    size: UVec2,
+    offset: Vec2,
+    map_size: TilemapSize,
+    grid_size: TilemapGridSize,
+    map_type: TilemapType,
+    map_transform: &Transform,
+    settings: &MiniMapSettings,
+    camera_q: &Query<(&Camera, &GlobalTransform)>,
+    windows: &Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = windows.iter().next();
+    let Some(window) = window else {
+        return;
+    };
+    let camera = camera_q.iter().next();
+    let Some((camera, camera_transform)) = camera else {
+        return;
+    };
+    let corners = [
+        Vec2::new(0.0, 0.0),
+        Vec2::new(window.width(), 0.0),
+        Vec2::new(0.0, window.height()),
+        Vec2::new(window.width(), window.height()),
+    ];
+    let mut tile_positions = Vec::new();
+    for corner in corners {
+        if let Some(world) = camera.viewport_to_world_2d(camera_transform, corner) {
+            let map_pos = map_transform.compute_matrix().inverse() * Vec4::from((world, 0.0, 1.0));
+            if let Some(tile_pos) =
+                TilePos::from_world_pos(&map_pos.xy(), &map_size, &grid_size, &map_type)
+            {
+                tile_positions.push(tile_pos);
+            }
+        }
+    }
+    if tile_positions.is_empty() {
+        return;
+    }
+    let mut min_x = tile_positions[0].x as i32;
+    let mut max_x = tile_positions[0].x as i32;
+    let mut min_y = tile_positions[0].y as i32;
+    let mut max_y = tile_positions[0].y as i32;
+    for pos in tile_positions {
+        min_x = min_x.min(pos.x as i32);
+        max_x = max_x.max(pos.x as i32);
+        min_y = min_y.min(pos.y as i32);
+        max_y = max_y.max(pos.y as i32);
+    }
+    min_x = min_x.clamp(0, map_size.x.saturating_sub(1) as i32);
+    max_x = max_x.clamp(0, map_size.x.saturating_sub(1) as i32);
+    min_y = min_y.clamp(0, map_size.y.saturating_sub(1) as i32);
+    max_y = max_y.clamp(0, map_size.y.saturating_sub(1) as i32);
+
+    for x in min_x..=max_x {
+        let (rx0, ry0) = rotate_coord(x, min_y, map_size);
+        let (rx1, ry1) = rotate_coord(x, max_y, map_size);
+        draw_diamond(data, size, minimap_center(rx0, ry0, settings.tile_px, offset), settings.tile_px, settings.camera_color);
+        draw_diamond(data, size, minimap_center(rx1, ry1, settings.tile_px, offset), settings.tile_px, settings.camera_color);
+    }
+    for y in min_y..=max_y {
+        let (rx0, ry0) = rotate_coord(min_x, y, map_size);
+        let (rx1, ry1) = rotate_coord(max_x, y, map_size);
+        draw_diamond(data, size, minimap_center(rx0, ry0, settings.tile_px, offset), settings.tile_px, settings.camera_color);
+        draw_diamond(data, size, minimap_center(rx1, ry1, settings.tile_px, offset), settings.tile_px, settings.camera_color);
+    }
 }
 
 fn draw_diamond(data: &mut [u8], size: UVec2, center: Vec2, tile_px: u32, color: Color) {
