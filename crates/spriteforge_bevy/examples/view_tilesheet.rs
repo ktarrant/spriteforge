@@ -12,7 +12,7 @@ use rand::rngs::StdRng;
 use spriteforge_bevy::{
     build_render_layers,
     load_tilesheet_metadata,
-    map_generators::{path, terrain},
+    map_generators::{map_skeleton, path, terrain},
     BaseTile, MapSkeleton, MiniMapPlugin, MiniMapSource, TileSelectedEvent,
     TileSelectionPlugin, TileSelectionSettings, TileSelectionState, TilesheetMetadata,
 };
@@ -370,7 +370,7 @@ fn spawn_map(
             (tiles, None)
         }
         MapKind::Path => {
-            let skeleton = path::generate_map_skeleton(width, height, &mut rng);
+            let skeleton = map_skeleton::generate_map_skeleton(width, height, &mut rng);
             let tiles = path::rasterize_skeleton(width, height, &skeleton);
             (tiles, Some(skeleton))
         }
