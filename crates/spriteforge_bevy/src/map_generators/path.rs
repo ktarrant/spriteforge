@@ -18,6 +18,8 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
     let fork_x = width / 2;
     let fork_y = height / 2;
     let exit_y = height / 2;
+    let dead_end_x = (width as f32 * 0.1).round() as u32;
+    let dead_end_y = (height as f32 * 0.9).round() as u32;
 
     let mut path = Vec::new();
     let (fork_px, fork_py) = carve_path_segment(
@@ -46,6 +48,16 @@ pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseT
         fork_py,
         end_left as i32,
         exit_y as i32,
+        width,
+        height,
+        rng,
+    );
+    carve_path_segment(
+        &mut path,
+        fork_px,
+        fork_py,
+        dead_end_x as i32,
+        dead_end_y as i32,
         width,
         height,
         rng,
