@@ -2,7 +2,7 @@ use image::{ImageBuffer, Rgba};
 
 use crate::config::TileConfig;
 use crate::render::transition;
-use crate::render::util::{draw_isometric_ground, edge_weight_for_angles};
+use crate::render::util::{draw_isometric_ground, edge_weight_for_mask};
 
 pub fn render_weight_debug_tile(
     size: u32,
@@ -13,7 +13,7 @@ pub fn render_weight_debug_tile(
     if config.name != "debug_weight" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    let angles = transition::angles_for_mask(transition_mask.unwrap_or(transition::EDGE_N));
+    let mask = transition_mask.unwrap_or(transition::EDGE_N);
 
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
@@ -27,7 +27,7 @@ pub fn render_weight_debug_tile(
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-        let weight = edge_weight_for_angles(&angles, xf, yf);
+        let weight = edge_weight_for_mask(mask, xf, yf);
         img.put_pixel(x, y, weight_color(weight));
     }
 

@@ -39,7 +39,7 @@ pub fn all_47_masks() -> Vec<u8> {
     for raw in 0u8..=u8::MAX {
         masks.insert(normalize_47(raw));
     }
-    masks.into_iter().collect()
+    masks.into_iter().filter(|mask| *mask != 0).collect()
 }
 
 pub fn angles_for_mask(mask: u8) -> Vec<f32> {

@@ -4,7 +4,7 @@ use rand::{Rng, SeedableRng};
 
 use crate::config::{TileConfig, TransitionOverrides};
 use crate::render::transition;
-use crate::render::util::{blit, draw_isometric_ground, edge_weight_for_angles, parse_hex_color};
+use crate::render::util::{blit, draw_isometric_ground, edge_weight_for_mask, parse_hex_color};
 
 pub fn render_grass_tile(
     size: u32,
@@ -61,8 +61,6 @@ pub fn render_grass_transition_tile(
             falloff = override_falloff;
         }
     }
-    let angles = transition::angles_for_mask(transition_mask);
-
     add_grass_blades_weighted(
         &mut img,
         &base,
@@ -72,7 +70,7 @@ pub fn render_grass_transition_tile(
         blade_max,
         density,
         bias,
-        &angles,
+        transition_mask,
         falloff,
     );
 
@@ -112,7 +110,7 @@ pub fn add_grass_blades_weighted(
     blade_max: i32,
     density: f32,
     bias: f32,
-    angles_deg: &[f32],
+    transition_mask: u8,
     falloff: f32,
 ) {
     let min_blade = blade_min.max(1);
@@ -127,7 +125,7 @@ pub fn add_grass_blades_weighted(
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-        let edge_weight = edge_weight_for_angles(angles_deg, xf, yf);
+        let edge_weight = edge_weight_for_mask(transition_mask, xf, yf);
         let weighted = edge_weight.powf(falloff);
         let prob = density * ((1.0 - bias) + bias * weighted);
         if rng.gen_range(0.0..1.0) > prob {
