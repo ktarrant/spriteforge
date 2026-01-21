@@ -20,6 +20,8 @@ pub struct TileConfig {
     pub grass_shades: Option<[String; 3]>,
     pub water_base: Option<String>,
     pub water_edge_cutoff: Option<f32>,
+    pub path_base: Option<String>,
+    pub path_edge_cutoff: Option<f32>,
     pub dirt_base: Option<String>,
     pub dirt_splotches: Option<[String; 2]>,
     pub dirt_stones: Option<[String; 2]>,
@@ -43,6 +45,7 @@ pub struct TransitionOverrides {
     pub bias: Option<f32>,
     pub falloff: Option<f32>,
     pub water_edge_cutoff: Option<f32>,
+    pub path_edge_cutoff: Option<f32>,
 }
 
 pub fn load_tile_config(path: &Path) -> Result<TileConfig, String> {

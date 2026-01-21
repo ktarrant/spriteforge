@@ -121,6 +121,204 @@ pub fn blit(target: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, src: &ImageBuffer<Rgba<
     }
 }
 
+pub fn apply_edge_cutout(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    mask: u8,
+    cutoff: f32,
+    gradient: f32,
+) {
+    let w = img.width().max(1) as f32;
+    let h = img.height().max(1) as f32;
+    for (x, y, pixel) in img.enumerate_pixels_mut() {
+        if pixel.0[3] == 0 {
+            continue;
+        }
+        let xf = x as f32 / w;
+        let yf = y as f32 / h;
+
+        let mut alpha: f32 = 1.0;
+        if mask & crate::render::transition::EDGE_N != 0 {
+            // Line is written as y = 0.75 - (1.0 - x - cutoff) * 0.5
+            let border: f32 = 0.75 - (1.0 - xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, -gradient, d);
+            }
+            if d > 0.0 {
+                alpha = 0.0;
+            }
+        }
+
+        if mask & crate::render::transition::EDGE_W != 0 {
+            // Line is written as y = 0.75 - (x - cutoff) * 0.5
+            let border: f32 = 0.75 - (xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, -gradient, d);
+            }
+            if d > 0.0 {
+                alpha = 0.0;
+            }
+        }
+
+        if mask & crate::render::transition::EDGE_S != 0 {
+            // Line is written as y = 0.75 + (x - cutoff) * 0.5
+            let border: f32 = 0.75 + (xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, gradient, d);
+            }
+            if d < 0.0 {
+                alpha = 0.0;
+            }
+        }
+
+        if mask & crate::render::transition::EDGE_E != 0 {
+            // Line is written as y = 0.75 + (1.0 - x - cutoff) * 0.5
+            let border: f32 = 0.75 + (1.0 - xf - cutoff) * 0.5;
+            let m: f32 = 0.5;
+            let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
+            let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
+            if gradient > 0.0 {
+                alpha *= smoothstep(0.0, gradient, d);
+            }
+            if d < 0.0 {
+                alpha = 0.0;
+            }
+        }
+
+        if mask & crate::render::transition::CORNER_NE != 0 {
+            let cx = 1.0 - cutoff * 0.25;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.4;
+            let d = (dx * dx + dy * dy).sqrt();
+            if xf > cx {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if mask & crate::render::transition::CORNER_NW != 0 {
+            let cx = 0.5;
+            let cy = 0.5 - cutoff * 0.6;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff;
+            let d = (dx * dx + dy * dy).sqrt();
+            if yf < cy {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if mask & crate::render::transition::CORNER_SW != 0 {
+            let cx = cutoff * 0.25;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.4;
+            let d = (dx * dx + dy * dy).sqrt();
+            if xf < cx {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if mask & crate::render::transition::CORNER_SE != 0 {
+            let cx = 0.5;
+            let cy = 1.0 + cutoff * 0.6;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff;
+            let d = (dx * dx + dy * dy).sqrt();
+            if yf > cy {
+                alpha = 0.0;
+            } else if gradient > 0.0 {
+                alpha *= smoothstep(radius, radius + gradient, d);
+            }
+            if d < radius {
+                alpha = 0.0;
+            }
+        }
+
+        if (mask & crate::render::transition::EDGE_E != 0)
+            && (mask & crate::render::transition::EDGE_N != 0)
+        {
+            let cx = 1.0 - cutoff * 2.0;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.5;
+            if (dx * dx + dy * dy >= radius * radius) && (xf > cx) {
+                alpha = 0.0;
+            }
+        }
+
+        if (mask & crate::render::transition::EDGE_S != 0)
+            && (mask & crate::render::transition::EDGE_W != 0)
+        {
+            let cx = cutoff * 2.0;
+            let cy = 0.75;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 0.5;
+            if (dx * dx + dy * dy >= radius * radius) && (xf < cx) {
+                alpha = 0.0;
+            }
+        }
+
+        if (mask & crate::render::transition::EDGE_W != 0)
+            && (mask & crate::render::transition::EDGE_N != 0)
+        {
+            let cx = 0.5;
+            let cy = 0.5 + cutoff * 4.8;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 4.0;
+            if dx * dx + dy * dy >= radius * radius {
+                alpha = 0.0;
+            }
+        }
+
+        if (mask & crate::render::transition::EDGE_S != 0)
+            && (mask & crate::render::transition::EDGE_E != 0)
+        {
+            let cx = 0.5;
+            let cy = 1.0 - cutoff * 4.8;
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let radius = cutoff * 4.0;
+            if dx * dx + dy * dy >= radius * radius {
+                alpha = 0.0;
+            }
+        }
+
+        let [r, g, b, _] = pixel.0;
+        let alpha_u8 = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
+        *pixel = Rgba([r, g, b, alpha_u8]);
+    }
+}
+
 fn put_pixel_safe(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, x: i32, y: i32, color: Rgba<u8>) {
     if x >= 0 && y >= 0 {
         let (x, y) = (x as u32, y as u32);
@@ -132,4 +330,9 @@ fn put_pixel_safe(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, x: i32, y: i32, colo
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }

@@ -22,6 +22,8 @@ const GRASS_IMAGE: &str = "out/tilesheet/grass.png";
 const GRASS_META: &str = "out/tilesheet/grass.json";
 const DIRT_IMAGE: &str = "out/tilesheet/dirt.png";
 const DIRT_META: &str = "out/tilesheet/dirt.json";
+const PATH_IMAGE: &str = "out/tilesheet/path.png";
+const PATH_META: &str = "out/tilesheet/path.json";
 const GRASS_TRANSITION_IMAGE: &str = "out/tilesheet/grass_transition.png";
 const GRASS_TRANSITION_META: &str = "out/tilesheet/grass_transition.json";
 const WATER_IMAGE: &str = "out/tilesheet/water.png";
@@ -46,6 +48,8 @@ struct TilesheetPaths {
     grass_meta: PathBuf,
     dirt_image: PathBuf,
     dirt_meta: PathBuf,
+    path_image: PathBuf,
+    path_meta: PathBuf,
     grass_transition_image: PathBuf,
     grass_transition_meta: PathBuf,
     water_image: PathBuf,
@@ -82,11 +86,13 @@ impl MaterialTilemap for WaterFoamMaterial {
 struct MapAssets {
     grass_meta: TilesheetMetadata,
     dirt_meta: TilesheetMetadata,
+    path_meta: TilesheetMetadata,
     transition_meta: TilesheetMetadata,
     water_meta: TilesheetMetadata,
     water_transition_meta: TilesheetMetadata,
     grass_texture: Handle<Image>,
     dirt_texture: Handle<Image>,
+    path_texture: Handle<Image>,
     transition_texture: Handle<Image>,
     water_texture: Handle<Image>,
     water_transition_texture: Handle<Image>,
@@ -172,6 +178,8 @@ fn main() {
             grass_meta: workspace_root.join(GRASS_META),
             dirt_image: PathBuf::from(DIRT_IMAGE),
             dirt_meta: workspace_root.join(DIRT_META),
+            path_image: PathBuf::from(PATH_IMAGE),
+            path_meta: workspace_root.join(PATH_META),
             grass_transition_image: PathBuf::from(GRASS_TRANSITION_IMAGE),
             grass_transition_meta: workspace_root.join(GRASS_TRANSITION_META),
             water_image: PathBuf::from(WATER_IMAGE),
@@ -238,6 +246,14 @@ fn setup(
         }
     };
 
+    let path_meta = match load_tilesheet_metadata(&paths.path_meta) {
+        Ok(data) => data,
+        Err(err) => {
+            eprintln!("Failed to load path metadata: {err}");
+            return;
+        }
+    };
+
     let transition_meta = match load_tilesheet_metadata(&paths.grass_transition_meta) {
         Ok(data) => data,
         Err(err) => {
@@ -265,6 +281,8 @@ fn setup(
         asset_server.load(paths.grass_image.to_string_lossy().to_string());
     let dirt_texture: Handle<Image> =
         asset_server.load(paths.dirt_image.to_string_lossy().to_string());
+    let path_texture: Handle<Image> =
+        asset_server.load(paths.path_image.to_string_lossy().to_string());
     let transition_texture: Handle<Image> =
         asset_server.load(paths.grass_transition_image.to_string_lossy().to_string());
     let water_texture: Handle<Image> =
@@ -313,11 +331,13 @@ fn setup(
     let assets = MapAssets {
         grass_meta,
         dirt_meta,
+        path_meta,
         transition_meta,
         water_meta,
         water_transition_meta,
         grass_texture,
         dirt_texture,
+        path_texture,
         transition_texture,
         water_texture,
         water_transition_texture,
@@ -383,6 +403,7 @@ fn spawn_map(
         height,
         &assets.grass_meta,
         &assets.dirt_meta,
+        &assets.path_meta,
         &assets.water_meta,
         &assets.water_transition_meta,
         &assets.transition_meta,
@@ -392,6 +413,8 @@ fn spawn_map(
     let grass_entity = commands.spawn_empty().id();
     let mut dirt_storage = TileStorage::empty(assets.map_size);
     let dirt_entity = commands.spawn_empty().id();
+    let mut path_storage = TileStorage::empty(assets.map_size);
+    let path_entity = commands.spawn_empty().id();
     let mut transition_storage = TileStorage::empty(assets.map_size);
     let transition_entity = commands.spawn_empty().id();
     let mut water_storage = TileStorage::empty(assets.map_size);
@@ -430,6 +453,18 @@ fn spawn_map(
                     })
                     .id();
                 dirt_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
+            }
+            if let Some(index) = layers.path[idx] {
+                let tile_entity = commands
+                    .spawn(TileBundle {
+                        position: tile_pos,
+                        tilemap_id: TilemapId(path_entity),
+                        texture_index: TileTextureIndex(index),
+                        ..Default::default()
+                    })
+                    .id();
+                path_storage.set(&tile_pos, tile_entity);
                 tiles.push(tile_entity);
             }
             if let Some(index) = layers.transition[idx] {
@@ -496,6 +531,20 @@ fn spawn_map(
         tile_size: assets.tile_size,
         map_type,
         transform: dirt_transform,
+        ..Default::default()
+    });
+    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
+    let mut path_transform =
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
+    path_transform.translation.z = 0.8;
+    commands.entity(path_entity).insert(TilemapBundle {
+        grid_size: assets.grid_size,
+        size: assets.map_size,
+        storage: path_storage,
+        texture: TilemapTexture::Single(assets.path_texture.clone()),
+        tile_size: assets.tile_size,
+        map_type,
+        transform: path_transform,
         ..Default::default()
     });
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
@@ -578,6 +627,7 @@ fn spawn_map(
         tilemaps: vec![
             grass_entity,
             dirt_entity,
+            path_entity,
             transition_entity,
             water_entity,
             water_transition_entity,
@@ -750,6 +800,7 @@ fn update_selected_tile_ui(
     let tile_type = match tile_data.tiles.get(idx) {
         Some(BaseTile::Grass) => "Grass",
         Some(BaseTile::Dirt) => "Dirt",
+        Some(BaseTile::Path) => "Path",
         Some(BaseTile::Water) => "Water",
         None => "Unknown",
     };

@@ -10,6 +10,8 @@ cargo run -- --out out/tilesheet/grass.png --config configs/tile/grass.config
 cargo run -- --out out/tilesheet/grass_transition.png --config configs/tile/grass_transition.config
 cargo run -- --out out/tilesheet/water.png --config configs/tile/water.config
 cargo run -- --out out/tilesheet/water_transition.png --config configs/tile/water_transition.config
+cargo run -- --out out/tilesheet/path.png --config configs/tile/path.config
+cargo run -- --out out/tilesheet/path_transition.png --config configs/tile/path_transition.config
 cargo run -- --out out/tilesheet/dirt.png --config configs/tile/dirt.config
 ```
 
@@ -24,7 +26,8 @@ cargo run -p spriteforge_bevy --example view_tilesheet
 ```
 The demo expects `out/tilesheet/grass.png` + `.json`, `out/tilesheet/dirt.png` + `.json`,
 `out/tilesheet/grass_transition.png` + `.json`, `out/tilesheet/water.png` + `.json`,
-and `out/tilesheet/water_transition.png` + `.json`.
+`out/tilesheet/water_transition.png` + `.json`, `out/tilesheet/path.png` + `.json`,
+and `out/tilesheet/path_transition.png` + `.json`.
 
 ## CLI
 
@@ -120,6 +123,23 @@ Water transition tile example (transparent edge cutout):
   "water_base": "#1c3f66",
   "water_edge_cutoff": 0.78,
   "tilesheet_seed_start": 201,
+  "tilesheet_columns": 4,
+  "tilesheet_padding": 0
+}
+```
+
+Path transition tile example (transparent edge cutout):
+
+```json
+{
+  "type": "tile",
+  "name": "path_transition",
+  "size": 256,
+  "bg": "transparent",
+  "seed": 6060,
+  "path_base": "#6b6b6b",
+  "path_edge_cutoff": 0.2,
+  "tilesheet_seed_start": 401,
   "tilesheet_columns": 4,
   "tilesheet_padding": 0
 }

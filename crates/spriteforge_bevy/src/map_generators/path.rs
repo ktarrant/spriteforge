@@ -37,22 +37,22 @@ fn rasterize_segment(width: u32, height: u32, segment: &PathSegment, cells: &mut
     let dx = (segment.end_x - segment.start_x).signum();
     let dy = (segment.end_y - segment.start_y).signum();
     let steps = (segment.end_x - segment.start_x).abs() + (segment.end_y - segment.start_y).abs();
+    let path_width = if segment.radius >= 1 { 2 } else { 1 };
     for step in 0..=steps {
         let x = segment.start_x + dx * step;
         let y = segment.start_y + dy * step;
-        for ny in (y - segment.radius)..=(y + segment.radius) {
-            for nx in (x - segment.radius)..=(x + segment.radius) {
-                if nx < 0 || ny < 0 {
-                    continue;
-                }
-                let nx = nx as u32;
-                let ny = ny as u32;
-                if nx >= width || ny >= height {
-                    continue;
-                }
-                let idx = (ny * width + nx) as usize;
-                cells[idx] = BaseTile::Dirt;
+        if dx != 0 {
+            for offset in 0..path_width {
+                set_tile(width, height, x, y + offset, BaseTile::Path, cells, true);
             }
+            set_tile(width, height, x, y - 1, BaseTile::Dirt, cells, false);
+            set_tile(width, height, x, y + path_width, BaseTile::Dirt, cells, false);
+        } else {
+            for offset in 0..path_width {
+                set_tile(width, height, x + offset, y, BaseTile::Path, cells, true);
+            }
+            set_tile(width, height, x - 1, y, BaseTile::Dirt, cells, false);
+            set_tile(width, height, x + path_width, y, BaseTile::Dirt, cells, false);
         }
     }
 }
@@ -76,7 +76,7 @@ fn rasterize_water_segment(width: u32, height: u32, segment: &PathSegment, cells
                     continue;
                 }
                 let idx = (ny * width + nx) as usize;
-                if matches!(cells[idx], BaseTile::Dirt) {
+                if matches!(cells[idx], BaseTile::Dirt | BaseTile::Path) {
                     continue;
                 }
                 cells[idx] = BaseTile::Water;
@@ -111,11 +111,34 @@ fn fill_water_circle(
                 continue;
             }
             let idx = (y_u * width + x_u) as usize;
-            if matches!(cells[idx], BaseTile::Dirt) {
+            if matches!(cells[idx], BaseTile::Dirt | BaseTile::Path) {
                 continue;
             }
             cells[idx] = BaseTile::Water;
         }
+    }
+}
+
+fn set_tile(
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    tile: BaseTile,
+    cells: &mut [BaseTile],
+    overwrite: bool,
+) {
+    if x < 0 || y < 0 {
+        return;
+    }
+    let x = x as u32;
+    let y = y as u32;
+    if x >= width || y >= height {
+        return;
+    }
+    let idx = (y * width + x) as usize;
+    if overwrite || matches!(cells[idx], BaseTile::Grass) {
+        cells[idx] = tile;
     }
 }
 
@@ -125,7 +148,10 @@ mod tests {
     use rand::SeedableRng;
 
     fn dirt_metrics(tiles: &[BaseTile]) -> (usize, f32) {
-        let dirt_count = tiles.iter().filter(|tile| matches!(tile, BaseTile::Dirt)).count();
+        let dirt_count = tiles
+            .iter()
+            .filter(|tile| matches!(tile, BaseTile::Dirt | BaseTile::Path))
+            .count();
         let dirt_pct = if tiles.is_empty() {
             0.0
         } else {

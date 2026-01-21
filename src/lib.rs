@@ -115,7 +115,7 @@ fn build_from_tile_config(
     let bg = parse_hex_color(&bg_hex)?;
     let is_transition = matches!(
         tile_config.name.as_str(),
-        "grass_transition" | "water_transition" | "debug_weight"
+        "grass_transition" | "water_transition" | "path_transition" | "debug_weight"
     );
     let has_tilesheet = tile_config.tilesheet_count.is_some()
         || tile_config.tilesheet_seed_start.is_some()
@@ -148,7 +148,7 @@ fn build_tilesheet_entries(tile_config: &TileConfig) -> Vec<TilesheetEntry> {
         .unwrap_or(1000);
     if matches!(
         tile_config.name.as_str(),
-        "grass_transition" | "water_transition" | "debug_weight"
+        "grass_transition" | "water_transition" | "path_transition" | "debug_weight"
     ) {
         let masks = spriteforge_assets::all_transition_masks();
         return masks

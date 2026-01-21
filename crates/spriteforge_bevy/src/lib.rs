@@ -16,6 +16,7 @@ pub use selection::{TileSelectedEvent, TileSelectionPlugin, TileSelectionSetting
 pub enum BaseTile {
     Grass,
     Dirt,
+    Path,
     Water,
 }
 
@@ -25,6 +26,7 @@ pub struct RenderTileLayers {
     pub height: u32,
     pub grass: Vec<Option<u32>>,
     pub dirt: Vec<Option<u32>>,
+    pub path: Vec<Option<u32>>,
     pub water: Vec<Option<u32>>,
     pub water_transition: Vec<Option<u32>>,
     pub transition: Vec<Option<u32>>,
@@ -38,6 +40,7 @@ pub fn build_render_layers<R: rand::Rng>(
     height: u32,
     grass_meta: &TilesheetMetadata,
     dirt_meta: &TilesheetMetadata,
+    path_meta: &TilesheetMetadata,
     water_meta: &TilesheetMetadata,
     water_transition_meta: &TilesheetMetadata,
     transition_meta: &TilesheetMetadata,
@@ -45,6 +48,7 @@ pub fn build_render_layers<R: rand::Rng>(
 ) -> RenderTileLayers {
     let mut grass = vec![None; base_tiles.len()];
     let mut dirt = vec![None; base_tiles.len()];
+    let mut path = vec![None; base_tiles.len()];
     let mut water = vec![None; base_tiles.len()];
     let mut water_transition = vec![None; base_tiles.len()];
     let mut transition = vec![None; base_tiles.len()];
@@ -87,6 +91,10 @@ pub fn build_render_layers<R: rand::Rng>(
                     let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
                     dirt[idx] = Some(dirt_index);
                 }
+                BaseTile::Path => {
+                    let path_index = rng.gen_range(0..path_meta.tile_count) as u32;
+                    path[idx] = Some(path_index);
+                }
             }
             if water_transition[idx].is_some() && dirt[idx].is_none() {
                 let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
@@ -100,6 +108,7 @@ pub fn build_render_layers<R: rand::Rng>(
         height,
         grass,
         dirt,
+        path,
         water,
         water_transition,
         transition,

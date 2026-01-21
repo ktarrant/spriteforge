@@ -5,6 +5,7 @@ use crate::config::{TileConfig, TilesheetEntry, TransitionOverrides};
 mod debug_weight;
 mod dirt;
 mod grass;
+mod path;
 pub mod transition;
 mod util;
 mod water;
@@ -40,6 +41,18 @@ pub fn render_tilesheet(
             padding,
             |mask, seed, overrides| {
                 water::render_water_transition_tile(size, bg, config, mask, overrides)
+            },
+        );
+    }
+    if config.name == "path_transition" {
+        return transition::render_transition_tilesheet(
+            size,
+            bg,
+            entries,
+            columns,
+            padding,
+            |mask, _seed, overrides| {
+                path::render_path_transition_tile(size, bg, config, mask, overrides)
             },
         );
     }
@@ -152,6 +165,14 @@ pub fn render_tile(
                 overrides,
             )
         }
+        "path" => path::render_path_tile(size, bg, config),
+        "path_transition" => path::render_path_transition_tile(
+            size,
+            bg,
+            config,
+            transition_mask.unwrap_or(transition::EDGE_N),
+            overrides,
+        ),
         "debug_weight" => debug_weight::render_weight_debug_tile(
             size,
             bg,

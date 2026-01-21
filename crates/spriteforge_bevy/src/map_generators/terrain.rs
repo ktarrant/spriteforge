@@ -35,6 +35,7 @@ pub fn smooth_terrain(cells: &mut [BaseTile], width: u32, height: u32, passes: u
                         match cells[idx] {
                             BaseTile::Grass => grass_count += 1,
                             BaseTile::Dirt => dirt_count += 1,
+                            BaseTile::Path => dirt_count += 1,
                             BaseTile::Water => water_count += 1,
                         }
                     }

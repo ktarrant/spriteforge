@@ -335,6 +335,7 @@ fn draw_base_tiles(
             let color = match tiles.get(idx) {
                 Some(BaseTile::Grass) => settings.grass_color,
                 Some(BaseTile::Dirt) => settings.dirt_color,
+                Some(BaseTile::Path) => settings.path_color,
                 Some(BaseTile::Water) => settings.water_color,
                 None => settings.grass_color,
             };
