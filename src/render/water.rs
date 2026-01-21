@@ -38,7 +38,7 @@ pub fn render_water_transition_tile(
             .clone()
             .unwrap_or_else(|| "#2a4f7a".to_string()),
     )?;
-    let angles = crate::render::transition::angles_for_mask(transition_mask);
+    let mask = transition_mask;
     let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {
@@ -49,7 +49,7 @@ pub fn render_water_transition_tile(
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     draw_isometric_ground(&mut img, size, water);
     let gradient = 0.0;
-    apply_edge_cutout(&mut img, &angles, cutoff, gradient);
+    apply_edge_cutout(&mut img, mask, cutoff, gradient);
     Ok(img)
 }
 
@@ -68,7 +68,7 @@ pub fn render_water_transition_mask_tile(
     if config.name != "water_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    let angles = crate::render::transition::angles_for_mask(transition_mask);
+    let mask = transition_mask;
     let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {
@@ -78,7 +78,7 @@ pub fn render_water_transition_mask_tile(
     let mut tile = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
     draw_isometric_ground(&mut tile, size, Rgba([255, 255, 255, 255]));
     let gradient = 0.2;
-    apply_edge_cutout(&mut tile, &angles, cutoff, gradient);
+    apply_edge_cutout(&mut tile, mask, cutoff, gradient);
     Ok(tile)
 }
 
@@ -89,23 +89,12 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 
 fn apply_edge_cutout(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-    angles: &[f32],
+    mask: u8,
     cutoff: f32,
     gradient: f32,
 ) {
     let w = img.width().max(1) as f32;
     let h = img.height().max(1) as f32;
-    let has_angle = |target: f32| angles.iter().any(|angle| (*angle - target).abs() < 0.01);
-    let angles_lookup = [
-        has_angle(0.0),
-        has_angle(26.5),
-        has_angle(90.0),
-        has_angle(153.435),
-        has_angle(180.0),
-        has_angle(206.565),
-        has_angle(270.0),
-        has_angle(333.435),
-    ];
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         if pixel.0[3] == 0 {
             continue;
@@ -114,7 +103,7 @@ fn apply_edge_cutout(
         let yf = y as f32 / h;
         
         let mut alpha: f32 = 1.0;
-        if angles_lookup[1] {
+        if mask & crate::render::transition::EDGE_E != 0 {
             // Line is written as y = 0.75 - (1.0 - x - cutoff) * 0.5
             let border: f32 = 0.75 - (1.0 - xf - cutoff) * 0.5;
             let m: f32 = 0.5;
@@ -128,7 +117,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[3] {
+        if mask & crate::render::transition::EDGE_S != 0 {
             // Line is written as y = 0.75 - (x - cutoff) * 0.5
             let border: f32 = 0.75 - (xf - cutoff) * 0.5;
             let m: f32 = 0.5;
@@ -142,7 +131,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[5] {
+        if mask & crate::render::transition::EDGE_W != 0 {
             // Line is written as y = 0.75 + (x - cutoff) * 0.5
             let border: f32 = 0.75 + (xf - cutoff) * 0.5;
             let m: f32 = 0.5;
@@ -156,7 +145,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[7] {
+        if mask & crate::render::transition::EDGE_N != 0 {
             // Line is written as y = 0.75 + (1.0 - x - cutoff) * 0.5
             let border: f32 = 0.75 + (1.0 - xf - cutoff) * 0.5;
             let m: f32 = 0.5;
@@ -170,7 +159,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[0] {
+        if mask & crate::render::transition::CORNER_SE != 0 {
             let cx = 1.0 - cutoff * 0.25;
             let cy = 0.75;
             let dx = xf - cx;
@@ -187,7 +176,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[2] {
+        if mask & crate::render::transition::CORNER_SW != 0 {
             let cx = 0.5;
             let cy = 0.5 - cutoff * 0.6;
             let dx = xf - cx;
@@ -204,7 +193,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[4] {
+        if mask & crate::render::transition::CORNER_NW != 0 {
             let cx = cutoff * 0.25;
             let cy = 0.75;
             let dx = xf - cx;
@@ -221,7 +210,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[6] {
+        if mask & crate::render::transition::CORNER_NE != 0 {
             let cx = 0.5;
             let cy = 1.0 + cutoff * 0.6;
             let dx = xf - cx;
@@ -238,7 +227,9 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[1] && angles_lookup[7] {
+        if (mask & crate::render::transition::EDGE_E != 0)
+            && (mask & crate::render::transition::EDGE_N != 0)
+        {
             let cx = 1.0 - cutoff * 2.0;
             let cy = 0.75;
             let dx = xf - cx;
@@ -249,7 +240,9 @@ fn apply_edge_cutout(
             }
         }
         
-        if angles_lookup[3]&& angles_lookup[5] {
+        if (mask & crate::render::transition::EDGE_S != 0)
+            && (mask & crate::render::transition::EDGE_W != 0)
+        {
             let cx = cutoff * 2.0;
             let cy = 0.75;
             let dx = xf - cx;
@@ -260,7 +253,9 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[1] && angles_lookup[3] {
+        if (mask & crate::render::transition::EDGE_E != 0)
+            && (mask & crate::render::transition::EDGE_S != 0)
+        {
             let cx = 0.5;
             let cy = 0.5 + cutoff * 4.8;
             let dx = xf - cx;
@@ -271,7 +266,9 @@ fn apply_edge_cutout(
             }
         }
 
-        if angles_lookup[5]&& angles_lookup[7] {
+        if (mask & crate::render::transition::EDGE_W != 0)
+            && (mask & crate::render::transition::EDGE_N != 0)
+        {
             let cx = 0.5;
             let cy = 1.0 - cutoff * 4.8;
             let dx = xf - cx;
