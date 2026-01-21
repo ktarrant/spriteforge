@@ -174,23 +174,19 @@ where
     F: FnMut(BaseTile) -> bool,
 {
     let mut mask = 0u8;
-    let north = y > 0 && is_match(tiles[((y - 1) * width + x) as usize]);
-    let west = x > 0 && is_match(tiles[(y * width + (x - 1)) as usize]);
-    let south = y + 1 < height && is_match(tiles[((y + 1) * width + x) as usize]);
-    let east = x + 1 < width && is_match(tiles[(y * width + (x + 1)) as usize]);
 
     // Edge-adjacent (diamond edges).
     // Mapping keeps the original angle lookup behavior.
-    if north {
+    if y > 0 && is_match(tiles[((y - 1) * width + x) as usize]) {
         mask |= EDGE_W;
     }
-    if west {
+    if x > 0 && is_match(tiles[(y * width + (x - 1)) as usize]) {
         mask |= EDGE_S;
     }
-    if south {
+    if y + 1 < height && is_match(tiles[((y + 1) * width + x) as usize]) {
         mask |= EDGE_E;
     }
-    if east {
+    if x + 1 < width && is_match(tiles[(y * width + (x + 1)) as usize]) {
         mask |= EDGE_N;
     }
 
@@ -199,28 +195,20 @@ where
     // West point (180) -> (x-1, y+1), South point (270) -> (x+1, y+1).
     if x + 1 < width && y > 0 && is_match(tiles[((y - 1) * width + (x + 1)) as usize])
     {
-        if !north && !east {
-            mask |= CORNER_NE;
-        }
+        mask |= CORNER_NE;
     }
     if x > 0 && y > 0 && is_match(tiles[((y - 1) * width + (x - 1)) as usize]) {
-        if !north && !west {
-            mask |= CORNER_NW;
-        }
+        mask |= CORNER_NW;
     }
     if x > 0 && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x - 1)) as usize])
     {
-        if !west && !south {
-            mask |= CORNER_SW;
-        }
+        mask |= CORNER_SW;
     }
     if x + 1 < width && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
     {
-        if !south && !east {
-            mask |= CORNER_SE;
-        }
+        mask |= CORNER_SE;
     }
     normalize_47(mask)
 }
