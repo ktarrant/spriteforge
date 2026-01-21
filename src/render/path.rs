@@ -50,7 +50,6 @@ pub fn render_path_transition_tile(
     draw_isometric_ground(&mut img, size, path);
 
     // Apply path edge transitions
-    let gradient = 0.2;
     let w = img.width().max(1) as f32;
     let h = img.height().max(1) as f32;
     for (x, y, pixel) in img.enumerate_pixels_mut() {
@@ -60,7 +59,7 @@ pub fn render_path_transition_tile(
         let xf = x as f32 / w;
         let yf = y as f32 / h;
         let [r, g, b, _] = pixel.0;
-        let alpha_u8 = (edge_weight_for_mask(mask, xf, yf, cutoff, gradient) * 255.0).round() as u8;
+        let alpha_u8 = (edge_weight_for_mask(mask, xf, yf, cutoff, 0.0) * 255.0).round() as u8;
         *pixel = Rgba([r, g, b, alpha_u8]);
     }
     Ok(img)
