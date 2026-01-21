@@ -123,3 +123,14 @@ pub fn mask_edges(mask: u8) -> u8 {
 pub fn mask_corners(mask: u8) -> u8 {
     mask & CORNER_MASK
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transition_mask_count() {
+        let masks = all_transition_masks();
+        assert_eq!(masks.len(), 74);
+    }
+}
