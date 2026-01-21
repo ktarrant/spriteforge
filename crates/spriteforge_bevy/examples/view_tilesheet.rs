@@ -104,6 +104,8 @@ struct MapEntities {
     tilemaps: Vec<Entity>,
     tiles: Vec<Entity>,
     primary_map: Entity,
+    transition_map: Entity,
+    water_transition_map: Entity,
     hover_map: Entity,
     selected_map: Entity,
 }
@@ -584,6 +586,8 @@ fn spawn_map(
         ],
         tiles,
         primary_map: grass_entity,
+        transition_map: transition_entity,
+        water_transition_map: water_transition_entity,
         hover_map: hover_entity,
         selected_map: selected_entity,
         },
@@ -721,7 +725,11 @@ fn spawn_selected_tile_ui(commands: &mut Commands, _asset_server: &Res<AssetServ
 fn update_selected_tile_ui(
     mut events: EventReader<TileSelectedEvent>,
     mut ui: ResMut<SelectedTileUi>,
+    assets: Res<MapAssets>,
+    entities: Res<MapEntities>,
     tile_data: Res<MapTileData>,
+    storage_q: Query<&TileStorage>,
+    tile_q: Query<&TileTextureIndex>,
     mut text_q: Query<&mut Text>,
 ) {
     let mut latest = None;
@@ -745,10 +753,44 @@ fn update_selected_tile_ui(
         Some(BaseTile::Water) => "Water",
         None => "Unknown",
     };
-    text.sections[0].value = format!(
-        "Selected Tile\nPos: {}, {}\nType: {}",
-        tile_pos.x, tile_pos.y, tile_type
-    );
+    let mut lines = vec![
+        "Selected Tile".to_string(),
+        format!("Pos: {}, {}", tile_pos.x, tile_pos.y),
+        format!("Type: {}", tile_type),
+    ];
+    if let Some(mask) = transition_mask_for_tile(
+        entities.transition_map,
+        tile_pos,
+        &storage_q,
+        &tile_q,
+        &assets.transition_meta,
+    ) {
+        lines.push(format!("Grass Transition: {:08b}", mask));
+    }
+    if let Some(mask) = transition_mask_for_tile(
+        entities.water_transition_map,
+        tile_pos,
+        &storage_q,
+        &tile_q,
+        &assets.water_transition_meta,
+    ) {
+        lines.push(format!("Water Transition: {:08b}", mask));
+    }
+    text.sections[0].value = lines.join("\n");
+}
+
+fn transition_mask_for_tile(
+    map_entity: Entity,
+    tile_pos: TilePos,
+    storage_q: &Query<&TileStorage>,
+    tile_q: &Query<&TileTextureIndex>,
+    meta: &TilesheetMetadata,
+) -> Option<u8> {
+    let storage = storage_q.get(map_entity).ok()?;
+    let tile_entity = storage.get(&tile_pos)?;
+    let texture_index = tile_q.get(tile_entity).ok()?;
+    let tile = meta.tiles.get(texture_index.0 as usize)?;
+    tile.transition_mask
 }
 
 fn regenerate_map_on_space(
