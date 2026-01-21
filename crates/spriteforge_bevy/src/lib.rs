@@ -1,5 +1,7 @@
-use serde::Deserialize;
-use std::path::Path;
+pub use spriteforge_assets::{
+    load_tilesheet_metadata, normalize_mask, TileMetadata, TilesheetMetadata, CORNER_MASK,
+    CORNER_NE, CORNER_NW, CORNER_SE, CORNER_SW, EDGE_E, EDGE_MASK, EDGE_N, EDGE_S, EDGE_W,
+};
 
 pub mod minimap;
 pub mod selection;
@@ -9,44 +11,6 @@ pub use map_generators::map_skeleton::{
 pub use minimap::{MiniMapPlugin, MiniMapSettings, MiniMapSource, MiniMapState};
 pub use selection::{TileSelectedEvent, TileSelectionPlugin, TileSelectionSettings, TileSelectionState};
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct TilesheetMetadata {
-    pub image: String,
-    pub config: String,
-    pub tile_size: u32,
-    pub columns: u32,
-    pub rows: u32,
-    pub padding: u32,
-    pub tile_count: usize,
-    pub tiles: Vec<TileMetadata>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct TileMetadata {
-    pub index: usize,
-    pub row: u32,
-    pub col: u32,
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-    pub seed: u64,
-    pub transition_mask: Option<u8>,
-}
-
-const EDGE_N: u8 = 1 << 0;
-const EDGE_E: u8 = 1 << 1;
-const EDGE_S: u8 = 1 << 2;
-const EDGE_W: u8 = 1 << 3;
-const CORNER_NE: u8 = 1 << 4;
-const CORNER_SE: u8 = 1 << 5;
-const CORNER_SW: u8 = 1 << 6;
-const CORNER_NW: u8 = 1 << 7;
-
-pub fn load_tilesheet_metadata(path: &Path) -> Result<TilesheetMetadata, String> {
-    let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&data).map_err(|e| e.to_string())
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BaseTile {
@@ -178,39 +142,41 @@ where
     // Edge-adjacent (diamond edges).
     // Mapping keeps the original angle lookup behavior.
     if y > 0 && is_match(tiles[((y - 1) * width + x) as usize]) {
-        mask |= EDGE_W;
-    }
-    if x > 0 && is_match(tiles[(y * width + (x - 1)) as usize]) {
         mask |= EDGE_S;
     }
+    if x > 0 && is_match(tiles[(y * width + (x - 1)) as usize]) {
+        mask |= EDGE_W;
+    }
     if y + 1 < height && is_match(tiles[((y + 1) * width + x) as usize]) {
-        mask |= EDGE_E;
+        mask |= EDGE_N;
     }
     if x + 1 < width && is_match(tiles[(y * width + (x + 1)) as usize]) {
-        mask |= EDGE_N;
+        mask |= EDGE_E;
     }
 
     // Point-adjacent (diamond corners). These are diagonal neighbors in grid space.
-    // East point (0) -> (x+1, y-1), North point (90) -> (x-1, y-1),
-    // West point (180) -> (x-1, y+1), South point (270) -> (x+1, y+1).
+    // NE point (0) -> (x+1, y+1)
+    // SE point (90) -> (x+1, y-1)
+    // SW point (180) -> (x-1, y-1)
+    // NW point (270) -> (x-1, y+1)
+    if x + 1 < width && y + 1 < height
+        && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
+    {
+        mask |= CORNER_NE;
+    }
     if x + 1 < width && y > 0 && is_match(tiles[((y - 1) * width + (x + 1)) as usize])
     {
-        mask |= CORNER_SW;
+        mask |= CORNER_SE;
     }
     if x > 0 && y > 0 && is_match(tiles[((y - 1) * width + (x - 1)) as usize]) {
-        mask |= CORNER_NW;
+        mask |= CORNER_SW;
     }
     if x > 0 && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x - 1)) as usize])
     {
-        mask |= CORNER_NE;
+        mask |= CORNER_NW;
     }
-    if x + 1 < width && y + 1 < height
-        && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
-    {
-        mask |= CORNER_SE;
-    }
-    normalize_47(mask)
+    normalize_mask(mask)
 }
 
 fn build_transition_lookup(meta: &TilesheetMetadata) -> std::collections::HashMap<u8, Vec<u32>> {
@@ -219,8 +185,7 @@ fn build_transition_lookup(meta: &TilesheetMetadata) -> std::collections::HashMa
         let Some(mask) = tile.transition_mask else {
             continue;
         };
-        let key = normalize_47(mask);
-        map.entry(key).or_insert_with(Vec::new).push(tile.index as u32);
+        map.entry(mask).or_insert_with(Vec::new).push(tile.index as u32);
     }
     map
 }
@@ -233,53 +198,10 @@ fn pick_transition_index<R: rand::Rng>(
     if lookup.is_empty() {
         return None;
     }
-    let mask = normalize_47(mask);
-    if let Some(choices) = lookup.get(&mask) {
-        if choices.is_empty() {
-            return None;
-        }
-        return Some(choices[rng.gen_range(0..choices.len())]);
-    }
-
-    let mut best_matches = 0usize;
-    let mut best_choices: Vec<u32> = Vec::new();
-
-    for (key, choices) in lookup {
-        if choices.is_empty() {
-            continue;
-        }
-        if (key & mask) != *key {
-            continue;
-        }
-        let match_count = (*key & mask).count_ones() as usize;
-        if match_count > best_matches {
-            best_matches = match_count;
-            best_choices.clear();
-            best_choices.extend_from_slice(choices);
-        } else if match_count == best_matches {
-            best_choices.extend_from_slice(choices);
-        }
-    }
-
-    if best_choices.is_empty() || best_matches == 0 {
+    let mask = normalize_mask(mask);
+    let choices = lookup.get(&mask)?;
+    if choices.is_empty() {
         return None;
     }
-    Some(best_choices[rng.gen_range(0..best_choices.len())])
-}
-
-fn normalize_47(mask: u8) -> u8 {
-    let mut normalized = mask;
-    if (mask & EDGE_N != 0) && (mask & EDGE_E != 0) {
-        normalized &= !CORNER_NE;
-    }
-    if (mask & EDGE_S != 0) && (mask & EDGE_E != 0) {
-        normalized &= !CORNER_SE;
-    }
-    if (mask & EDGE_S != 0) && (mask & EDGE_W != 0) {
-        normalized &= !CORNER_SW;
-    }
-    if (mask & EDGE_N != 0) && (mask & EDGE_W != 0) {
-        normalized &= !CORNER_NW;
-    }
-    normalized
+    Some(choices[rng.gen_range(0..choices.len())])
 }

@@ -8,7 +8,7 @@ use crate::config::{
 use crate::render::{
     parse_hex_color, render_tile, render_tilesheet, render_tilesheet_mask, transition,
 };
-use serde::Serialize;
+use spriteforge_assets::{TileMetadata, TilesheetMetadata};
 
 mod config;
 mod render;
@@ -150,7 +150,7 @@ fn build_tilesheet_entries(tile_config: &TileConfig) -> Vec<TilesheetEntry> {
         tile_config.name.as_str(),
         "grass_transition" | "water_transition" | "debug_weight"
     ) {
-        let masks = transition::all_47_masks();
+        let masks = spriteforge_assets::all_transition_masks();
         return masks
             .iter()
             .enumerate()
@@ -197,31 +197,6 @@ fn render_single_tile(
         .or(tile.seed)
         .unwrap_or_else(rand::random::<u64>);
     render_tile(size, bg, seed, tile, None, None)
-}
-
-#[derive(Debug, Serialize)]
-struct TilesheetMetadata {
-    image: String,
-    config: String,
-    tile_size: u32,
-    columns: u32,
-    rows: u32,
-    padding: u32,
-    tile_count: usize,
-    tiles: Vec<TileMetadata>,
-}
-
-#[derive(Debug, Serialize)]
-struct TileMetadata {
-    index: usize,
-    row: u32,
-    col: u32,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-    seed: u64,
-    transition_mask: Option<u8>,
 }
 
 fn write_tilesheet_metadata(

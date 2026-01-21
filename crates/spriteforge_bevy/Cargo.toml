@@ -12,3 +12,4 @@ bevy_ecs_tilemap = { version = "0.14", features = ["atlas"] }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 rand = "0.8.5"
+spriteforge_assets = { path = "../spriteforge_assets" }

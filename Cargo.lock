@@ -4040,6 +4040,15 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "spriteforge_assets",
+]
+
+[[package]]
+name = "spriteforge_assets"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4051,6 +4060,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "spriteforge_assets",
 ]
 
 [[package]]

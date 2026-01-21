@@ -50,7 +50,7 @@ pub fn draw_isometric_ground(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, size: u32
 }
 
 pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32) -> f32 {
-    let angles = crate::render::transition::angles_for_mask(mask);
+    let angles = spriteforge_assets::angles_for_mask(mask);
     let mut best: f32 = 1.0;
     for &angle in &angles {
         best = best.min(edge_weight_for_angle(angle, xf, yf));
@@ -65,7 +65,7 @@ pub fn edge_weight_for_angle(angle_deg: f32, xf: f32, yf: f32) -> f32 {
 
     // Centered coordinates; flip Y so "up" is positive (optional but usually nicer)
     let dx = xf - cx;
-    let dy = (cy - yf) / 0.5;
+    let dy = (yf - cy) / 0.5;
 
     // Direction unit vector for the gradient
     let a = angle_deg.to_radians();

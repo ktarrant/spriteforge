@@ -9,6 +9,7 @@ image = "0.25.2"
 rand = "0.8.5"
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
+spriteforge_assets = { path = "crates/spriteforge_assets" }
 
 [workspace]
-members = ["crates/spriteforge_bevy"]
+members = ["crates/spriteforge_bevy", "crates/spriteforge_assets"]

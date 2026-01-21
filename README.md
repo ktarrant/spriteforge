@@ -6,14 +6,11 @@ crate to render pixel-art style sprites based on simple prompt rules.
 ## Quick start
 
 ```bash
-cargo run -- --out out/grass.png --config configs/tile/grass.config
 cargo run -- --out out/tilesheet/grass.png --config configs/tile/grass.config
-cargo run -- --out out/dirt.png --config configs/tile/dirt.config
-cargo run -- --out out/grass_transition.png --config configs/tile/grass_transition.config
 cargo run -- --out out/tilesheet/grass_transition.png --config configs/tile/grass_transition.config
-cargo run -- --out out/water.png --config configs/tile/water.config
 cargo run -- --out out/tilesheet/water.png --config configs/tile/water.config
 cargo run -- --out out/tilesheet/water_transition.png --config configs/tile/water_transition.config
+cargo run -- --out out/tilesheet/dirt.png --config configs/tile/dirt.config
 ```
 
 Build all tilesheets (no args):
