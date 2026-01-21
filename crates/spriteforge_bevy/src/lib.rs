@@ -269,16 +269,16 @@ fn pick_transition_index<R: rand::Rng>(
 
 fn normalize_47(mask: u8) -> u8 {
     let mut normalized = mask;
-    if (mask & EDGE_N == 1) && (mask & EDGE_E == 1) {
+    if (mask & EDGE_N != 0) && (mask & EDGE_E != 0) {
         normalized &= !CORNER_NE;
     }
-    if (mask & EDGE_S == 1) && (mask & EDGE_E == 1) {
+    if (mask & EDGE_S != 0) && (mask & EDGE_E != 0) {
         normalized &= !CORNER_SE;
     }
-    if (mask & EDGE_S == 1) && (mask & EDGE_W == 1) {
+    if (mask & EDGE_S != 0) && (mask & EDGE_W != 0) {
         normalized &= !CORNER_SW;
     }
-    if (mask & EDGE_N == 1) && (mask & EDGE_W == 1) {
+    if (mask & EDGE_N != 0) && (mask & EDGE_W != 0) {
         normalized &= !CORNER_NW;
     }
     normalized
