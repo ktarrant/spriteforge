@@ -27,6 +27,7 @@ pub struct RenderTileLayers {
     pub grass: Vec<Option<u32>>,
     pub dirt: Vec<Option<u32>>,
     pub path: Vec<Option<u32>>,
+    pub path_transition: Vec<Option<u32>>,
     pub water: Vec<Option<u32>>,
     pub water_transition: Vec<Option<u32>>,
     pub transition: Vec<Option<u32>>,
@@ -41,6 +42,7 @@ pub fn build_render_layers<R: rand::Rng>(
     grass_meta: &TilesheetMetadata,
     dirt_meta: &TilesheetMetadata,
     path_meta: &TilesheetMetadata,
+    path_transition_meta: &TilesheetMetadata,
     water_meta: &TilesheetMetadata,
     water_transition_meta: &TilesheetMetadata,
     transition_meta: &TilesheetMetadata,
@@ -49,11 +51,13 @@ pub fn build_render_layers<R: rand::Rng>(
     let mut grass = vec![None; base_tiles.len()];
     let mut dirt = vec![None; base_tiles.len()];
     let mut path = vec![None; base_tiles.len()];
+    let mut path_transition = vec![None; base_tiles.len()];
     let mut water = vec![None; base_tiles.len()];
     let mut water_transition = vec![None; base_tiles.len()];
     let mut transition = vec![None; base_tiles.len()];
 
     let transition_lookup = build_transition_lookup(transition_meta);
+    let path_transition_lookup = build_transition_lookup(path_transition_meta);
     let water_transition_lookup = build_transition_lookup(water_transition_meta);
 
     for y in 0..height {
@@ -92,11 +96,24 @@ pub fn build_render_layers<R: rand::Rng>(
                     dirt[idx] = Some(dirt_index);
                 }
                 BaseTile::Path => {
-                    let path_index = rng.gen_range(0..path_meta.tile_count) as u32;
-                    path[idx] = Some(path_index);
+                    let mask = adjacent_non_path_mask(x, y, width, height, base_tiles);
+                    if mask != 0 {
+                        let index = pick_transition_index(mask, &path_transition_lookup, rng)
+                            .unwrap_or_else(|| {
+                                rng.gen_range(0..path_transition_meta.tile_count) as u32
+                            });
+                        path_transition[idx] = Some(index);
+                    } else {
+                        let path_index = rng.gen_range(0..path_meta.tile_count) as u32;
+                        path[idx] = Some(path_index);
+                    }
                 }
             }
             if water_transition[idx].is_some() && dirt[idx].is_none() {
+                let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
+                dirt[idx] = Some(dirt_index);
+            }
+            if path_transition[idx].is_some() && dirt[idx].is_none() {
                 let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
                 dirt[idx] = Some(dirt_index);
             }
@@ -109,6 +126,7 @@ pub fn build_render_layers<R: rand::Rng>(
         grass,
         dirt,
         path,
+        path_transition,
         water,
         water_transition,
         transition,
@@ -133,6 +151,16 @@ fn adjacent_non_grass_mask(
     tiles: &[BaseTile],
 ) -> u8 {
     adjacent_mask(x, y, width, height, tiles, |tile| tile != BaseTile::Grass)
+}
+
+fn adjacent_non_path_mask(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    tiles: &[BaseTile],
+) -> u8 {
+    adjacent_mask(x, y, width, height, tiles, |tile| tile != BaseTile::Path)
 }
 
 fn adjacent_mask<F>(

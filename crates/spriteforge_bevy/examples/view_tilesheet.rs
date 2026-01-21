@@ -24,6 +24,8 @@ const DIRT_IMAGE: &str = "out/tilesheet/dirt.png";
 const DIRT_META: &str = "out/tilesheet/dirt.json";
 const PATH_IMAGE: &str = "out/tilesheet/path.png";
 const PATH_META: &str = "out/tilesheet/path.json";
+const PATH_TRANSITION_IMAGE: &str = "out/tilesheet/path_transition.png";
+const PATH_TRANSITION_META: &str = "out/tilesheet/path_transition.json";
 const GRASS_TRANSITION_IMAGE: &str = "out/tilesheet/grass_transition.png";
 const GRASS_TRANSITION_META: &str = "out/tilesheet/grass_transition.json";
 const WATER_IMAGE: &str = "out/tilesheet/water.png";
@@ -50,6 +52,8 @@ struct TilesheetPaths {
     dirt_meta: PathBuf,
     path_image: PathBuf,
     path_meta: PathBuf,
+    path_transition_image: PathBuf,
+    path_transition_meta: PathBuf,
     grass_transition_image: PathBuf,
     grass_transition_meta: PathBuf,
     water_image: PathBuf,
@@ -87,12 +91,14 @@ struct MapAssets {
     grass_meta: TilesheetMetadata,
     dirt_meta: TilesheetMetadata,
     path_meta: TilesheetMetadata,
+    path_transition_meta: TilesheetMetadata,
     transition_meta: TilesheetMetadata,
     water_meta: TilesheetMetadata,
     water_transition_meta: TilesheetMetadata,
     grass_texture: Handle<Image>,
     dirt_texture: Handle<Image>,
     path_texture: Handle<Image>,
+    path_transition_texture: Handle<Image>,
     transition_texture: Handle<Image>,
     water_texture: Handle<Image>,
     water_transition_texture: Handle<Image>,
@@ -111,6 +117,7 @@ struct MapEntities {
     tiles: Vec<Entity>,
     primary_map: Entity,
     transition_map: Entity,
+    path_transition_map: Entity,
     water_transition_map: Entity,
     hover_map: Entity,
     selected_map: Entity,
@@ -180,6 +187,8 @@ fn main() {
             dirt_meta: workspace_root.join(DIRT_META),
             path_image: PathBuf::from(PATH_IMAGE),
             path_meta: workspace_root.join(PATH_META),
+            path_transition_image: PathBuf::from(PATH_TRANSITION_IMAGE),
+            path_transition_meta: workspace_root.join(PATH_TRANSITION_META),
             grass_transition_image: PathBuf::from(GRASS_TRANSITION_IMAGE),
             grass_transition_meta: workspace_root.join(GRASS_TRANSITION_META),
             water_image: PathBuf::from(WATER_IMAGE),
@@ -254,6 +263,14 @@ fn setup(
         }
     };
 
+    let path_transition_meta = match load_tilesheet_metadata(&paths.path_transition_meta) {
+        Ok(data) => data,
+        Err(err) => {
+            eprintln!("Failed to load path transition metadata: {err}");
+            return;
+        }
+    };
+
     let transition_meta = match load_tilesheet_metadata(&paths.grass_transition_meta) {
         Ok(data) => data,
         Err(err) => {
@@ -283,6 +300,8 @@ fn setup(
         asset_server.load(paths.dirt_image.to_string_lossy().to_string());
     let path_texture: Handle<Image> =
         asset_server.load(paths.path_image.to_string_lossy().to_string());
+    let path_transition_texture: Handle<Image> =
+        asset_server.load(paths.path_transition_image.to_string_lossy().to_string());
     let transition_texture: Handle<Image> =
         asset_server.load(paths.grass_transition_image.to_string_lossy().to_string());
     let water_texture: Handle<Image> =
@@ -332,12 +351,14 @@ fn setup(
         grass_meta,
         dirt_meta,
         path_meta,
+        path_transition_meta,
         transition_meta,
         water_meta,
         water_transition_meta,
         grass_texture,
         dirt_texture,
         path_texture,
+        path_transition_texture,
         transition_texture,
         water_texture,
         water_transition_texture,
@@ -404,6 +425,7 @@ fn spawn_map(
         &assets.grass_meta,
         &assets.dirt_meta,
         &assets.path_meta,
+        &assets.path_transition_meta,
         &assets.water_meta,
         &assets.water_transition_meta,
         &assets.transition_meta,
@@ -415,6 +437,8 @@ fn spawn_map(
     let dirt_entity = commands.spawn_empty().id();
     let mut path_storage = TileStorage::empty(assets.map_size);
     let path_entity = commands.spawn_empty().id();
+    let mut path_transition_storage = TileStorage::empty(assets.map_size);
+    let path_transition_entity = commands.spawn_empty().id();
     let mut transition_storage = TileStorage::empty(assets.map_size);
     let transition_entity = commands.spawn_empty().id();
     let mut water_storage = TileStorage::empty(assets.map_size);
@@ -465,6 +489,18 @@ fn spawn_map(
                     })
                     .id();
                 path_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
+            }
+            if let Some(index) = layers.path_transition[idx] {
+                let tile_entity = commands
+                    .spawn(TileBundle {
+                        position: tile_pos,
+                        tilemap_id: TilemapId(path_transition_entity),
+                        texture_index: TileTextureIndex(index),
+                        ..Default::default()
+                    })
+                    .id();
+                path_transition_storage.set(&tile_pos, tile_entity);
                 tiles.push(tile_entity);
             }
             if let Some(index) = layers.transition[idx] {
@@ -548,6 +584,20 @@ fn spawn_map(
         ..Default::default()
     });
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
+    let mut path_transition_transform =
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
+    path_transition_transform.translation.z = 0.9;
+    commands.entity(path_transition_entity).insert(TilemapBundle {
+        grid_size: assets.grid_size,
+        size: assets.map_size,
+        storage: path_transition_storage,
+        texture: TilemapTexture::Single(assets.path_transition_texture.clone()),
+        tile_size: assets.tile_size,
+        map_type,
+        transform: path_transition_transform,
+        ..Default::default()
+    });
+    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
     let mut transition_transform =
         get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     transition_transform.translation.z = 0.5;
@@ -628,6 +678,7 @@ fn spawn_map(
             grass_entity,
             dirt_entity,
             path_entity,
+            path_transition_entity,
             transition_entity,
             water_entity,
             water_transition_entity,
@@ -637,6 +688,7 @@ fn spawn_map(
         tiles,
         primary_map: grass_entity,
         transition_map: transition_entity,
+        path_transition_map: path_transition_entity,
         water_transition_map: water_transition_entity,
         hover_map: hover_entity,
         selected_map: selected_entity,
@@ -826,6 +878,15 @@ fn update_selected_tile_ui(
         &assets.water_transition_meta,
     ) {
         lines.push(format!("Water Transition: {:08b}", mask));
+    }
+    if let Some(mask) = transition_mask_for_tile(
+        entities.path_transition_map,
+        tile_pos,
+        &storage_q,
+        &tile_q,
+        &assets.path_transition_meta,
+    ) {
+        lines.push(format!("Path Transition: {:08b}", mask));
     }
     text.sections[0].value = lines.join("\n");
 }
