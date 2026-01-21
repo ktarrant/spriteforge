@@ -1,22 +1,19 @@
 use image::{ImageBuffer, Rgba};
 
 use crate::config::TileConfig;
+use crate::render::transition;
 use crate::render::util::{draw_isometric_ground, edge_weight_for_angles};
 
 pub fn render_weight_debug_tile(
     size: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
-    angles_override: Option<&Vec<f32>>,
+    transition_mask: Option<u8>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "debug_weight" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    let angles = angles_override
-        .cloned()
-        .or_else(|| config.transition_angles.clone())
-        .or_else(|| config.transition_angle.map(|angle| vec![angle]))
-        .unwrap_or_else(|| vec![333.435]);
+    let angles = transition::angles_for_mask(transition_mask.unwrap_or(transition::EDGE_N));
 
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));

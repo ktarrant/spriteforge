@@ -2,10 +2,12 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    load_config, load_tile_config, output_path_for_config, resolve_path, tilesheet_entries,
-    ConfigFile, TileConfig, TilesheetEntry, DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
+    load_tile_config, output_path_for_config, TileConfig, TilesheetEntry, TransitionOverrides,
+    DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
 };
-use crate::render::{parse_hex_color, render_tile, render_tilesheet, render_tilesheet_mask};
+use crate::render::{
+    parse_hex_color, render_tile, render_tilesheet, render_tilesheet_mask, transition,
+};
 use serde::Serialize;
 
 mod config;
@@ -59,7 +61,7 @@ fn build_all_tilesheets() -> Result<(), String> {
     let dir = Path::new(TILESET_CONFIG_DIR);
     if !dir.exists() {
         return Err(format!(
-            "Tilesheet config directory not found: {TILESET_CONFIG_DIR}"
+            "Tile config directory not found: {TILESET_CONFIG_DIR}"
         ));
     }
     let mut found = false;
@@ -86,48 +88,9 @@ fn build_all_tilesheets() -> Result<(), String> {
 }
 
 fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String> {
-    let config = load_config(config_path)?;
     let out_path = output_path_for_config(config_path, args.out.as_ref(), DEFAULT_OUT_DIR);
-
-    let image = match config {
-        ConfigFile::Tile(tile) => render_single_tile(&tile, config_path, args)?,
-        ConfigFile::Tilesheet(sheet) => {
-            let entries = tilesheet_entries(&sheet)?;
-            if entries.is_empty() {
-                return Err("Tilesheet must include seeds or variants".to_string());
-            }
-            let tile_path = resolve_path(config_path, &sheet.tile_config);
-            let tile_config = load_tile_config(&tile_path)?;
-            let size = args.size.or(tile_config.size).unwrap_or(256);
-            let bg_hex = args
-                .bg
-                .clone()
-                .or_else(|| tile_config.bg.clone())
-                .unwrap_or_else(|| "transparent".to_string());
-            let bg = parse_hex_color(&bg_hex)?;
-            let columns = sheet.columns.unwrap_or(4).max(1);
-            let padding = sheet.padding.unwrap_or(0);
-            let image = render_tilesheet(size, bg, &tile_config, &entries, columns, padding)?;
-            if tile_config.name == "water" || tile_config.name == "water_transition" {
-                let mask = render_tilesheet_mask(size, &tile_config, &entries, columns, padding)?;
-                let mask_path = mask_output_path(&out_path);
-                if let Some(parent) = mask_path.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                }
-                mask.save(&mask_path).map_err(|e| e.to_string())?;
-                println!("Saved tilesheet mask to {}", mask_path.display());
-            }
-            write_tilesheet_metadata(
-                &out_path,
-                &entries,
-                size,
-                columns,
-                padding,
-                config_path,
-            )?;
-            image
-        }
-    };
+    let tile_config = load_tile_config(config_path)?;
+    let image = build_from_tile_config(&tile_config, config_path, args, &out_path)?;
 
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -135,6 +98,77 @@ fn build_from_config_path(config_path: &Path, args: &Args) -> Result<(), String>
     image.save(&out_path).map_err(|e| e.to_string())?;
     println!("Saved sprite to {}", out_path.display());
     Ok(())
+}
+
+fn build_from_tile_config(
+    tile_config: &TileConfig,
+    config_path: &Path,
+    args: &Args,
+    out_path: &Path,
+) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
+    let size = args.size.or(tile_config.size).unwrap_or(256);
+    let bg_hex = args
+        .bg
+        .clone()
+        .or_else(|| tile_config.bg.clone())
+        .unwrap_or_else(|| "transparent".to_string());
+    let bg = parse_hex_color(&bg_hex)?;
+    let is_transition = matches!(
+        tile_config.name.as_str(),
+        "grass_transition" | "water_transition" | "debug_weight"
+    );
+    let has_tilesheet = tile_config.tilesheet_count.is_some()
+        || tile_config.tilesheet_seed_start.is_some()
+        || is_transition;
+    if !has_tilesheet {
+        return render_tile(size, bg, tile_config.seed.unwrap_or(0), tile_config, None, None);
+    }
+
+    let columns = tile_config.tilesheet_columns.unwrap_or(4).max(1);
+    let padding = tile_config.tilesheet_padding.unwrap_or(0);
+    let entries = build_tilesheet_entries(tile_config);
+    let image = render_tilesheet(size, bg, tile_config, &entries, columns, padding)?;
+    if tile_config.name == "water" || tile_config.name == "water_transition" {
+        let mask = render_tilesheet_mask(size, tile_config, &entries, columns, padding)?;
+        let mask_path = mask_output_path(out_path);
+        if let Some(parent) = mask_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        mask.save(&mask_path).map_err(|e| e.to_string())?;
+        println!("Saved tilesheet mask to {}", mask_path.display());
+    }
+    write_tilesheet_metadata(out_path, &entries, size, columns, padding, config_path)?;
+    Ok(image)
+}
+
+fn build_tilesheet_entries(tile_config: &TileConfig) -> Vec<TilesheetEntry> {
+    let seed_start = tile_config
+        .tilesheet_seed_start
+        .or(tile_config.seed)
+        .unwrap_or(1000);
+    if matches!(
+        tile_config.name.as_str(),
+        "grass_transition" | "water_transition" | "debug_weight"
+    ) {
+        let masks = transition::all_47_masks();
+        return masks
+            .iter()
+            .enumerate()
+            .map(|(index, mask)| TilesheetEntry {
+                seed: seed_start + index as u64,
+                overrides: TransitionOverrides::default(),
+                transition_mask: Some(*mask),
+            })
+            .collect();
+    }
+    let count = tile_config.tilesheet_count.unwrap_or(1) as usize;
+    (0..count)
+        .map(|index| TilesheetEntry {
+            seed: seed_start + index as u64,
+            overrides: TransitionOverrides::default(),
+            transition_mask: None,
+        })
+        .collect()
 }
 
 fn mask_output_path(out_path: &Path) -> std::path::PathBuf {
@@ -187,7 +221,7 @@ struct TileMetadata {
     width: u32,
     height: u32,
     seed: u64,
-    angles: Vec<f32>,
+    transition_mask: Option<u8>,
 }
 
 fn write_tilesheet_metadata(
@@ -215,7 +249,7 @@ fn write_tilesheet_metadata(
             width: tile_size,
             height: tile_size,
             seed: entry.seed,
-            angles: entry.angles.clone().unwrap_or_default(),
+            transition_mask: entry.transition_mask,
         });
     }
 

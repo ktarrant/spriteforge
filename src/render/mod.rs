@@ -5,7 +5,7 @@ use crate::config::{TileConfig, TilesheetEntry, TransitionOverrides};
 mod debug_weight;
 mod dirt;
 mod grass;
-mod grass_transition;
+pub mod transition;
 mod util;
 mod water;
 
@@ -19,6 +19,30 @@ pub fn render_tilesheet(
     columns: u32,
     padding: u32,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    if config.name == "grass_transition" {
+        return transition::render_transition_tilesheet(
+            size,
+            bg,
+            entries,
+            columns,
+            padding,
+            |mask, seed, overrides| {
+                grass::render_grass_transition_tile(size, bg, seed, config, mask, overrides)
+            },
+        );
+    }
+    if config.name == "water_transition" {
+        return transition::render_transition_tilesheet(
+            size,
+            bg,
+            entries,
+            columns,
+            padding,
+            |mask, seed, overrides| {
+                water::render_water_transition_tile(size, bg, config, mask, overrides)
+            },
+        );
+    }
     let cols = columns.max(1);
     let rows = ((entries.len() as u32) + cols - 1) / cols;
     let sheet_w = cols * size + padding * (cols.saturating_sub(1));
@@ -31,7 +55,7 @@ pub fn render_tilesheet(
             bg,
             entry.seed,
             config,
-            entry.angles.as_ref(),
+            entry.transition_mask,
             Some(&entry.overrides),
         )?;
         let col = (i as u32) % cols;
@@ -51,6 +75,17 @@ pub fn render_tilesheet_mask(
     columns: u32,
     padding: u32,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    if config.name == "water_transition" {
+        return transition::render_transition_mask_tilesheet(
+            size,
+            entries,
+            columns,
+            padding,
+            |mask, overrides| {
+                water::render_water_transition_mask_tile(size, config, mask, overrides)
+            },
+        );
+    }
     let cols = columns.max(1);
     let rows = ((entries.len() as u32) + cols - 1) / cols;
     let sheet_w = cols * size + padding * (cols.saturating_sub(1));
@@ -59,7 +94,7 @@ pub fn render_tilesheet_mask(
 
     for (i, entry) in entries.iter().enumerate() {
         let mask_tile =
-            render_tile_mask(size, config, entry.angles.as_ref(), Some(&entry.overrides))?;
+            render_tile_mask(size, config, entry.transition_mask, Some(&entry.overrides))?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
         let x = (col * size + padding * col) as i32;
@@ -73,14 +108,17 @@ pub fn render_tilesheet_mask(
 fn render_tile_mask(
     size: u32,
     config: &TileConfig,
-    angles_override: Option<&Vec<f32>>,
+    transition_mask: Option<u8>,
     overrides: Option<&TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
         "water" => Ok(water::render_water_mask_tile(size)),
-        "water_transition" => {
-            water::render_water_transition_mask_tile(size, config, angles_override, overrides)
-        }
+        "water_transition" => water::render_water_transition_mask_tile(
+            size,
+            config,
+            transition_mask.unwrap_or(transition::EDGE_N),
+            overrides,
+        ),
         other => Err(format!("No mask renderer for tile name: {other}")),
     }
 }
@@ -90,25 +128,36 @@ pub fn render_tile(
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
-    angles_override: Option<&Vec<f32>>,
+    transition_mask: Option<u8>,
     overrides: Option<&TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
         "grass" => grass::render_grass_tile(size, bg, seed, config),
         "dirt" => dirt::render_dirt_tile(size, bg, seed, config),
-        "grass_transition" => grass_transition::render_grass_transition_tile(
+        "grass_transition" => grass::render_grass_transition_tile(
             size,
             bg,
             seed,
             config,
-            angles_override,
+            transition_mask.unwrap_or(transition::EDGE_N),
             overrides,
         ),
         "water" => water::render_water_tile(size, bg, config),
         "water_transition" => {
-            water::render_water_transition_tile(size, bg, config, angles_override, overrides)
+            water::render_water_transition_tile(
+                size,
+                bg,
+                config,
+                transition_mask.unwrap_or(transition::EDGE_N),
+                overrides,
+            )
         }
-        "debug_weight" => debug_weight::render_weight_debug_tile(size, bg, config, angles_override),
+        "debug_weight" => debug_weight::render_weight_debug_tile(
+            size,
+            bg,
+            config,
+            transition_mask,
+        ),
         other => Err(format!("Unknown tile name: {other}")),
     }
 }

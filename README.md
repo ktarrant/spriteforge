@@ -7,13 +7,13 @@ crate to render pixel-art style sprites based on simple prompt rules.
 
 ```bash
 cargo run -- --out out/grass.png --config configs/tile/grass.config
-cargo run -- --out out/tilesheet/grass.png --config configs/tilesheet/grass.config
+cargo run -- --out out/tilesheet/grass.png --config configs/tile/grass.config
 cargo run -- --out out/dirt.png --config configs/tile/dirt.config
 cargo run -- --out out/grass_transition.png --config configs/tile/grass_transition.config
-cargo run -- --out out/tilesheet/grass_transition.png --config configs/tilesheet/grass_transition.config
+cargo run -- --out out/tilesheet/grass_transition.png --config configs/tile/grass_transition.config
 cargo run -- --out out/water.png --config configs/tile/water.config
-cargo run -- --out out/tilesheet/water.png --config configs/tilesheet/water.config
-cargo run -- --out out/tilesheet/water_transition.png --config configs/tilesheet/water_transition.config
+cargo run -- --out out/tilesheet/water.png --config configs/tile/water.config
+cargo run -- --out out/tilesheet/water_transition.png --config configs/tile/water_transition.config
 ```
 
 Build all tilesheets (no args):
@@ -33,7 +33,7 @@ and `out/tilesheet/water_transition.png` + `.json`.
 
 ```bash
 spriteforge --out out/grass.png --config configs/tile/grass.config
-spriteforge --out out/tilesheet/grass.png --config configs/tilesheet/grass.config
+spriteforge --out out/tilesheet/grass.png --config configs/tile/grass.config
 ```
 
 ## Notes
@@ -42,8 +42,8 @@ spriteforge --out out/tilesheet/grass.png --config configs/tilesheet/grass.confi
 
 ## Config
 
-All tweakable settings can live in a JSON config file. The `type` field selects
-`tile` or `tilesheet`.
+All tweakable settings live in a JSON config file. Tilesheets are generated from
+the same tile config using `tilesheet_*` fields.
 
 ```json
 {
@@ -62,26 +62,14 @@ All tweakable settings can live in a JSON config file. The `type` field selects
 CLI flags (like `--size` or `--bg`) override values in the config when provided.
 Use `bg: "transparent"` for a transparent background.
 
-Running with no arguments will build every tilesheet config in `configs/tilesheet`
+Running with no arguments will build every tile config in `configs/tile`
 and write outputs to `out/tilesheet/<config-name>.png`.
 Tilesheet builds also write metadata JSON next to the image (same name, `.json`).
 Water tilesheets (including water transitions) also emit a mask PNG named `<config-name>_mask.png`.
 
 Debug weight visualization (manual run only):
 ```bash
-cargo run -- --out out/tilesheet/debug_weight.png --config configs/debug/debug_weight_tileset.config
-```
-
-Tilesheet example:
-
-```json
-{
-  "type": "tilesheet",
-  "tile_config": "../tile/grass.config",
-  "seeds": [11, 27, 43, 59, 71, 83, 97, 103, 127, 149, 173, 199],
-  "columns": 4,
-  "padding": 0
-}
+cargo run -- --out out/tilesheet/debug_weight.png --config configs/debug/debug_weight.config
 ```
 
 Dirt tile example:
@@ -112,30 +100,14 @@ Transition tile example (grass overlay):
   "seed": 777,
   "blade_min": 1,
   "blade_max": 6,
-  "transition_angle": 333.435,
   "transition_density": 0.35,
   "transition_bias": 0.85,
   "transition_falloff": 2.2,
   "grass_base": "#205c3e",
-  "grass_shades": ["#2f6f4a", "#3f8f5e", "#58b174"]
-}
-```
-
-Transition tilesheet example (grass overlay):
-
-```json
-{
-  "type": "tilesheet",
-  "tile_config": "../tile/grass_transition.config",
-  "variants": [
-    {"seed": 101, "angles": [153.435]},
-    {"seed": 102, "angles": [26.5]},
-    {"seed": 103, "angles": [206.565]},
-    {"seed": 104, "angles": [333.435]},
-    {"seed": 105, "angles": [0, 90, 180, 270], "density": 0.3, "falloff": 2.2}
-  ],
-  "columns": 4,
-  "padding": 0
+  "grass_shades": ["#2f6f4a", "#3f8f5e", "#58b174"],
+  "tilesheet_seed_start": 101,
+  "tilesheet_columns": 4,
+  "tilesheet_padding": 0
 }
 ```
 
@@ -149,7 +121,9 @@ Water transition tile example (transparent edge cutout):
   "bg": "transparent",
   "seed": 5555,
   "water_base": "#1c3f66",
-  "transition_angle": 333.435,
-  "water_edge_cutoff": 0.78
+  "water_edge_cutoff": 0.78,
+  "tilesheet_seed_start": 201,
+  "tilesheet_columns": 4,
+  "tilesheet_padding": 0
 }
 ```

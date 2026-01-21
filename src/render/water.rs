@@ -26,7 +26,7 @@ pub fn render_water_transition_tile(
     size: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
-    angles_override: Option<&Vec<f32>>,
+    transition_mask: u8,
     overrides: Option<&crate::config::TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "water_transition" {
@@ -38,11 +38,7 @@ pub fn render_water_transition_tile(
             .clone()
             .unwrap_or_else(|| "#2a4f7a".to_string()),
     )?;
-    let angles = angles_override
-        .cloned()
-        .or_else(|| config.transition_angles.clone())
-        .or_else(|| config.transition_angle.map(|angle| vec![angle]))
-        .unwrap_or_else(|| vec![333.435]);
+    let angles = crate::render::transition::angles_for_mask(transition_mask);
     let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {
@@ -66,17 +62,13 @@ pub fn render_water_mask_tile(size: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
 pub fn render_water_transition_mask_tile(
     size: u32,
     config: &TileConfig,
-    angles_override: Option<&Vec<f32>>,
+    transition_mask: u8,
     overrides: Option<&crate::config::TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "water_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    let angles = angles_override
-        .cloned()
-        .or_else(|| config.transition_angles.clone())
-        .or_else(|| config.transition_angle.map(|angle| vec![angle]))
-        .unwrap_or_else(|| vec![333.435]);
+    let angles = crate::render::transition::angles_for_mask(transition_mask);
     let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {

@@ -31,8 +31,17 @@ pub struct TileMetadata {
     pub width: u32,
     pub height: u32,
     pub seed: u64,
-    pub angles: Vec<f32>,
+    pub transition_mask: Option<u8>,
 }
+
+const EDGE_N: u8 = 1 << 0;
+const EDGE_E: u8 = 1 << 1;
+const EDGE_S: u8 = 1 << 2;
+const EDGE_W: u8 = 1 << 3;
+const CORNER_NE: u8 = 1 << 4;
+const CORNER_SE: u8 = 1 << 5;
+const CORNER_SW: u8 = 1 << 6;
+const CORNER_NW: u8 = 1 << 7;
 
 pub fn load_tilesheet_metadata(path: &Path) -> Result<TilesheetMetadata, String> {
     let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
@@ -84,9 +93,9 @@ pub fn build_render_layers<R: rand::Rng>(
             let idx = (y * width + x) as usize;
             match base_tiles[idx] {
                 BaseTile::Grass => {
-                    let angles = adjacent_non_grass_angles(x, y, width, height, base_tiles);
-                    if !angles.is_empty() {
-                        let index = pick_transition_index(&angles, &transition_lookup, rng)
+                    let mask = adjacent_non_grass_mask(x, y, width, height, base_tiles);
+                    if mask != 0 {
+                        let index = pick_transition_index(mask, &transition_lookup, rng)
                             .unwrap_or_else(|| rng.gen_range(0..dirt_meta.tile_count) as u32);
                         transition[idx] = Some(index);
                         let dirt_index = rng.gen_range(0..dirt_meta.tile_count) as u32;
@@ -97,10 +106,10 @@ pub fn build_render_layers<R: rand::Rng>(
                     }
                 }
                 BaseTile::Water => {
-                    let angles = adjacent_non_water_angles(x, y, width, height, base_tiles);
-                    if !angles.is_empty() {
+                    let mask = adjacent_non_water_mask(x, y, width, height, base_tiles);
+                    if mask != 0 {
                         let index =
-                            pick_transition_index(&angles, &water_transition_lookup, rng)
+                            pick_transition_index(mask, &water_transition_lookup, rng)
                                 .unwrap_or_else(|| {
                                     rng.gen_range(0..water_transition_meta.tile_count) as u32
                                 });
@@ -133,60 +142,56 @@ pub fn build_render_layers<R: rand::Rng>(
     }
 }
 
-fn adjacent_non_water_angles(
+fn adjacent_non_water_mask(
     x: u32,
     y: u32,
     width: u32,
     height: u32,
     tiles: &[BaseTile],
-) -> Vec<f32> {
-    adjacent_angles(x, y, width, height, tiles, |tile| tile != BaseTile::Water)
+) -> u8 {
+    adjacent_mask(x, y, width, height, tiles, |tile| tile != BaseTile::Water)
 }
 
-fn adjacent_non_grass_angles(
+fn adjacent_non_grass_mask(
     x: u32,
     y: u32,
     width: u32,
     height: u32,
     tiles: &[BaseTile],
-) -> Vec<f32> {
-    adjacent_angles(x, y, width, height, tiles, |tile| tile != BaseTile::Grass)
+) -> u8 {
+    adjacent_mask(x, y, width, height, tiles, |tile| tile != BaseTile::Grass)
 }
 
-fn adjacent_angles<F>(
+fn adjacent_mask<F>(
     x: u32,
     y: u32,
     width: u32,
     height: u32,
     tiles: &[BaseTile],
     mut is_match: F,
-) -> Vec<f32>
+) -> u8
 where
     F: FnMut(BaseTile) -> bool,
 {
-    let mut angles = Vec::new();
+    let mut mask = 0u8;
     let north = y > 0 && is_match(tiles[((y - 1) * width + x) as usize]);
     let west = x > 0 && is_match(tiles[(y * width + (x - 1)) as usize]);
     let south = y + 1 < height && is_match(tiles[((y + 1) * width + x) as usize]);
     let east = x + 1 < width && is_match(tiles[(y * width + (x + 1)) as usize]);
 
     // Edge-adjacent (diamond edges).
-    // North -> NE (26.5), West -> NW (153.435), South -> SW (206.565), East -> SE (333.435).
+    // Mapping keeps the original angle lookup behavior.
     if north {
-        angles.push(206.565);
+        mask |= EDGE_W;
     }
     if west {
-        angles.push(153.435);
+        mask |= EDGE_S;
     }
     if south {
-        angles.push(26.5);
+        mask |= EDGE_E;
     }
     if east {
-        angles.push(333.435);
-    }
-
-    if angles.len() > 2 {
-        return angles;
+        mask |= EDGE_N;
     }
 
     // Point-adjacent (diamond corners). These are diagonal neighbors in grid space.
@@ -195,54 +200,58 @@ where
     if x + 1 < width && y > 0 && is_match(tiles[((y - 1) * width + (x + 1)) as usize])
     {
         if !north && !east {
-            angles.push(270.0);
+            mask |= CORNER_NE;
         }
     }
     if x > 0 && y > 0 && is_match(tiles[((y - 1) * width + (x - 1)) as usize]) {
         if !north && !west {
-            angles.push(180.0);
+            mask |= CORNER_NW;
         }
     }
     if x > 0 && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x - 1)) as usize])
     {
         if !west && !south {
-            angles.push(90.0);
+            mask |= CORNER_SW;
         }
     }
     if x + 1 < width && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
     {
         if !south && !east {
-            angles.push(0.0);
+            mask |= CORNER_SE;
         }
     }
-    angles
+    normalize_47(mask)
 }
 
-fn build_transition_lookup(meta: &TilesheetMetadata) -> std::collections::HashMap<String, Vec<u32>> {
+fn build_transition_lookup(meta: &TilesheetMetadata) -> std::collections::HashMap<u8, Vec<u32>> {
     let mut map = std::collections::HashMap::new();
     for tile in &meta.tiles {
-        let key = angles_key(&tile.angles);
+        let Some(mask) = tile.transition_mask else {
+            continue;
+        };
+        let key = normalize_47(mask);
         map.entry(key).or_insert_with(Vec::new).push(tile.index as u32);
     }
     map
 }
 
 fn pick_transition_index<R: rand::Rng>(
-    angles: &[f32],
-    lookup: &std::collections::HashMap<String, Vec<u32>>,
+    mask: u8,
+    lookup: &std::collections::HashMap<u8, Vec<u32>>,
     rng: &mut R,
 ) -> Option<u32> {
     if lookup.is_empty() {
         return None;
     }
-
-    let target_keys: std::collections::HashSet<String> = angles_key(angles)
-        .split(',')
-        .filter(|entry| !entry.is_empty())
-        .map(|entry| entry.to_string())
-        .collect();
+    let mask = normalize_47(mask);
+    if let Some(choices) = lookup.get(&mask) {
+        if choices.is_empty() {
+            return None;
+        }
+        return Some(choices[rng.gen_range(0..choices.len())]);
+    }
 
     let mut best_matches = 0usize;
     let mut best_choices: Vec<u32> = Vec::new();
@@ -251,13 +260,10 @@ fn pick_transition_index<R: rand::Rng>(
         if choices.is_empty() {
             continue;
         }
-        let match_count = key
-            .split(',')
-            .filter(|entry| target_keys.contains(*entry))
-            .count();
-        if target_keys.len() < key.split(',').filter(|entry| !entry.is_empty()).count() {
+        if (key & mask) != *key {
             continue;
         }
+        let match_count = (*key & mask).count_ones() as usize;
         if match_count > best_matches {
             best_matches = match_count;
             best_choices.clear();
@@ -273,12 +279,19 @@ fn pick_transition_index<R: rand::Rng>(
     Some(best_choices[rng.gen_range(0..best_choices.len())])
 }
 
-fn angles_key(angles: &[f32]) -> String {
-    let mut sorted = angles.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    sorted
-        .iter()
-        .map(|angle| format!("{angle:.3}"))
-        .collect::<Vec<_>>()
-        .join(",")
+fn normalize_47(mask: u8) -> u8 {
+    let mut normalized = mask;
+    if (mask & EDGE_N == 0) || (mask & EDGE_E == 0) {
+        normalized &= !CORNER_NE;
+    }
+    if (mask & EDGE_S == 0) || (mask & EDGE_E == 0) {
+        normalized &= !CORNER_SE;
+    }
+    if (mask & EDGE_S == 0) || (mask & EDGE_W == 0) {
+        normalized &= !CORNER_SW;
+    }
+    if (mask & EDGE_N == 0) || (mask & EDGE_W == 0) {
+        normalized &= !CORNER_NW;
+    }
+    normalized
 }
