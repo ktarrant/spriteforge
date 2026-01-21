@@ -1,7 +1,7 @@
 use image::{ImageBuffer, Rgba};
 
 use crate::config::TileConfig;
-use crate::render::util::{apply_edge_cutout, draw_isometric_ground, parse_hex_color};
+use crate::render::util::{edge_weight_for_mask, draw_isometric_ground, parse_hex_color};
 
 pub fn render_path_tile(
     size: u32,
@@ -48,7 +48,20 @@ pub fn render_path_transition_tile(
 
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     draw_isometric_ground(&mut img, size, path);
-    let gradient = 0.0;
-    apply_edge_cutout(&mut img, mask, cutoff, gradient);
+
+    // Apply path edge transitions
+    let gradient = 0.2;
+    let w = img.width().max(1) as f32;
+    let h = img.height().max(1) as f32;
+    for (x, y, pixel) in img.enumerate_pixels_mut() {
+        if pixel.0[3] == 0 {
+            continue;
+        }
+        let xf = x as f32 / w;
+        let yf = y as f32 / h;
+        let [r, g, b, _] = pixel.0;
+        let alpha_u8 = (edge_weight_for_mask(mask, xf, yf, cutoff, gradient) * 255.0).round() as u8;
+        *pixel = Rgba([r, g, b, alpha_u8]);
+    }
     Ok(img)
 }

@@ -27,7 +27,7 @@ pub fn render_weight_debug_tile(
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-        let weight = edge_weight_for_mask(mask, xf, yf);
+        let weight = edge_weight_for_mask(mask, xf, yf, 0.0, 1.0);
         img.put_pixel(x, y, weight_color(weight));
     }
 

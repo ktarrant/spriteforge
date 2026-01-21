@@ -125,9 +125,8 @@ pub fn add_grass_blades_weighted(
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-        let edge_weight = edge_weight_for_mask(transition_mask, xf, yf);
-        let weighted = edge_weight.powf(falloff);
-        let prob = density * ((1.0 - bias) + bias * weighted);
+        let edge_weight = edge_weight_for_mask(transition_mask, xf, yf, 0.0, 1.0);
+        let prob = density * ((1.0 - bias) + bias * edge_weight);
         if rng.gen_range(0.0..1.0) > prob {
             continue;
         }
