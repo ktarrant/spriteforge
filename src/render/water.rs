@@ -176,7 +176,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if mask & crate::render::transition::CORNER_SW != 0 {
+        if mask & crate::render::transition::CORNER_NE != 0 {
             let cx = 0.5;
             let cy = 0.5 - cutoff * 0.6;
             let dx = xf - cx;
@@ -210,7 +210,7 @@ fn apply_edge_cutout(
             }
         }
 
-        if mask & crate::render::transition::CORNER_NE != 0 {
+        if mask & crate::render::transition::CORNER_SW != 0 {
             let cx = 0.5;
             let cy = 1.0 + cutoff * 0.6;
             let dx = xf - cx;

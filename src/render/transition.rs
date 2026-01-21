@@ -19,16 +19,16 @@ pub const CORNER_MASK: u8 = CORNER_NE | CORNER_SE | CORNER_SW | CORNER_NW;
 
 pub fn normalize_47(mask: u8) -> u8 {
     let mut normalized = mask;
-    if (mask & EDGE_N == 0) || (mask & EDGE_E == 0) {
+    if (mask & EDGE_N == 1) && (mask & EDGE_E == 1) {
         normalized &= !CORNER_NE;
     }
-    if (mask & EDGE_S == 0) || (mask & EDGE_E == 0) {
+    if (mask & EDGE_S == 1) && (mask & EDGE_E == 1) {
         normalized &= !CORNER_SE;
     }
-    if (mask & EDGE_S == 0) || (mask & EDGE_W == 0) {
+    if (mask & EDGE_S == 1) && (mask & EDGE_W == 1) {
         normalized &= !CORNER_SW;
     }
-    if (mask & EDGE_N == 0) || (mask & EDGE_W == 0) {
+    if (mask & EDGE_N == 1) && (mask & EDGE_W == 1) {
         normalized &= !CORNER_NW;
     }
     normalized
@@ -68,9 +68,6 @@ pub fn angles_for_mask(mask: u8) -> Vec<f32> {
     }
     if mask & CORNER_SE != 0 {
         angles.push(90.0);
-    }
-    if angles.is_empty() {
-        angles.push(333.435);
     }
     angles
 }

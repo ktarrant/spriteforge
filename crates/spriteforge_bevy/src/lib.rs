@@ -195,20 +195,20 @@ where
     // West point (180) -> (x-1, y+1), South point (270) -> (x+1, y+1).
     if x + 1 < width && y > 0 && is_match(tiles[((y - 1) * width + (x + 1)) as usize])
     {
-        mask |= CORNER_NW;
+        mask |= CORNER_SW;
     }
     if x > 0 && y > 0 && is_match(tiles[((y - 1) * width + (x - 1)) as usize]) {
-        mask |= CORNER_SW;
+        mask |= CORNER_NW;
     }
     if x > 0 && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x - 1)) as usize])
     {
-        mask |= CORNER_SE;
+        mask |= CORNER_NE;
     }
     if x + 1 < width && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
     {
-        mask |= CORNER_NE;
+        mask |= CORNER_SE;
     }
     normalize_47(mask)
 }
@@ -269,16 +269,16 @@ fn pick_transition_index<R: rand::Rng>(
 
 fn normalize_47(mask: u8) -> u8 {
     let mut normalized = mask;
-    if (mask & EDGE_N == 0) || (mask & EDGE_E == 0) {
+    if (mask & EDGE_N == 1) && (mask & EDGE_E == 1) {
         normalized &= !CORNER_NE;
     }
-    if (mask & EDGE_S == 0) || (mask & EDGE_E == 0) {
+    if (mask & EDGE_S == 1) && (mask & EDGE_E == 1) {
         normalized &= !CORNER_SE;
     }
-    if (mask & EDGE_S == 0) || (mask & EDGE_W == 0) {
+    if (mask & EDGE_S == 1) && (mask & EDGE_W == 1) {
         normalized &= !CORNER_SW;
     }
-    if (mask & EDGE_N == 0) || (mask & EDGE_W == 0) {
+    if (mask & EDGE_N == 1) && (mask & EDGE_W == 1) {
         normalized &= !CORNER_NW;
     }
     normalized
