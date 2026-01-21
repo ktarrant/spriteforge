@@ -195,20 +195,20 @@ where
     // West point (180) -> (x-1, y+1), South point (270) -> (x+1, y+1).
     if x + 1 < width && y > 0 && is_match(tiles[((y - 1) * width + (x + 1)) as usize])
     {
-        mask |= CORNER_NE;
+        mask |= CORNER_NW;
     }
     if x > 0 && y > 0 && is_match(tiles[((y - 1) * width + (x - 1)) as usize]) {
-        mask |= CORNER_NW;
+        mask |= CORNER_SW;
     }
     if x > 0 && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x - 1)) as usize])
     {
-        mask |= CORNER_SW;
+        mask |= CORNER_SE;
     }
     if x + 1 < width && y + 1 < height
         && is_match(tiles[((y + 1) * width + (x + 1)) as usize])
     {
-        mask |= CORNER_SE;
+        mask |= CORNER_NE;
     }
     normalize_47(mask)
 }

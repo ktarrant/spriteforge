@@ -58,16 +58,16 @@ pub fn angles_for_mask(mask: u8) -> Vec<f32> {
         angles.push(206.565);
     }
     if mask & CORNER_NE != 0 {
-        angles.push(270.0);
+        angles.push(0.0);
     }
     if mask & CORNER_NW != 0 {
-        angles.push(180.0);
+        angles.push(270.0);
     }
     if mask & CORNER_SW != 0 {
-        angles.push(90.0);
+        angles.push(180.0);
     }
     if mask & CORNER_SE != 0 {
-        angles.push(0.0);
+        angles.push(90.0);
     }
     if angles.is_empty() {
         angles.push(333.435);
