@@ -109,6 +109,9 @@ fn render_path_tile_with_mask(
             *pixel = Rgba([0, 0, 0, alpha_u8]);
         } else if brick_v.fract() < brick_crack && (brick_rowi != 0) {
             *pixel = Rgba([0, 0, 0, alpha_u8]);
+        // An example of filling a brick the hard way
+        // } else if brick_row == 3 && (brick_col == 2 || brick_col == 3) {
+        //     *pixel = Rgba([55, 55, 55, 255])
         }
     }
     Ok(img)
