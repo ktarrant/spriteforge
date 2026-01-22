@@ -58,7 +58,7 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
         let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
         if gradient > 0.0 {
-            alpha *= smoothstep(0.0, -gradient, d);
+            alpha = alpha.min(smoothstep(0.0, -gradient, d));
         }
         if d > 0.0 {
             alpha = 0.0;
@@ -72,7 +72,7 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
         let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
         if gradient > 0.0 {
-            alpha *= smoothstep(0.0, -gradient, d);
+            alpha = alpha.min(smoothstep(0.0, -gradient, d));
         }
         if d > 0.0 {
             alpha = 0.0;
@@ -86,7 +86,7 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
         let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
         if gradient > 0.0 {
-            alpha *= smoothstep(0.0, gradient, d);
+            alpha = alpha.min(smoothstep(0.0, gradient, d));
         }
         if d < 0.0 {
             alpha = 0.0;
@@ -100,7 +100,7 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
         let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
         if gradient > 0.0 {
-            alpha *= smoothstep(0.0, gradient, d);
+            alpha = alpha.min(smoothstep(0.0, gradient, d));
         }
         if d < 0.0 {
             alpha = 0.0;
@@ -117,7 +117,7 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         if xf > cx {
             alpha = 0.0;
         } else if gradient > 0.0 {
-            alpha *= smoothstep(radius, radius + gradient, d);
+            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
         }
         if d < radius {
             alpha = 0.0;
@@ -131,10 +131,8 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let dy = yf - cy;
         let radius = cutoff;
         let d = (dx * dx + dy * dy).sqrt();
-        if yf < cy {
-            alpha = 0.0;
-        } else if gradient > 0.0 {
-            alpha *= smoothstep(radius, radius + gradient, d);
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
         }
         if d < radius {
             alpha = 0.0;
@@ -148,10 +146,8 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let dy = yf - cy;
         let radius = cutoff * 0.4;
         let d = (dx * dx + dy * dy).sqrt();
-        if xf < cx {
-            alpha = 0.0;
-        } else if gradient > 0.0 {
-            alpha *= smoothstep(radius, radius + gradient, d);
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
         }
         if d < radius {
             alpha = 0.0;
@@ -165,10 +161,8 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let dy = yf - cy;
         let radius = cutoff;
         let d = (dx * dx + dy * dy).sqrt();
-        if yf > cy {
-            alpha = 0.0;
-        } else if gradient > 0.0 {
-            alpha *= smoothstep(radius, radius + gradient, d);
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
         }
         if d < radius {
             alpha = 0.0;
@@ -209,7 +203,7 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let dx = xf - cx;
         let dy = yf - cy;
         let radius = cutoff * 4.0;
-        if dx * dx + dy * dy >= radius * radius {
+        if (dx * dx + dy * dy >= radius * radius) && (yf < cy) {
             alpha = 0.0;
         }
     }
@@ -222,7 +216,7 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
         let dx = xf - cx;
         let dy = yf - cy;
         let radius = cutoff * 4.0;
-        if dx * dx + dy * dy >= radius * radius {
+        if (dx * dx + dy * dy >= radius * radius) && (yf > cy) {
             alpha = 0.0;
         }
     }
