@@ -49,61 +49,57 @@ pub fn draw_isometric_ground(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, size: u32
     }
 }
 
+pub fn iso_uv_from_xy(xf: f32, yf: f32) -> (f32, f32) {
+    // Left vertex of the diamond in normalized image coords
+    let lx = 0.0;
+    let ly = 0.75;
+
+    let dx = xf - lx;
+    let dy = yf - ly;
+
+    let u: f32 = dx + 2.0 * dy;
+    let v: f32 = u - dy * 4.0;
+
+    (u, v)
+}
+
 pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f32) -> f32 {
     let mut alpha: f32 = 1.0;
+    let (u, v): (f32, f32) = iso_uv_from_xy(xf, yf);
+
     if mask & crate::render::transition::EDGE_N != 0 {
-        // Line is written as y = 0.75 - (1.0 - x - cutoff) * 0.5
-        let border: f32 = 0.75 - (1.0 - xf - cutoff) * 0.5;
-        let m: f32 = 0.5;
-        let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
-        let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
-        if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(0.0, -gradient, d));
-        }
-        if d > 0.0 {
+        let border = 1.0 - cutoff;
+        if v > border {
             alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border - gradient, v));
         }
     }
 
     if mask & crate::render::transition::EDGE_W != 0 {
-        // Line is written as y = 0.75 - (x - cutoff) * 0.5
-        let border: f32 = 0.75 - (xf - cutoff) * 0.5;
-        let m: f32 = 0.5;
-        let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
-        let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
-        if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(0.0, -gradient, d));
-        }
-        if d > 0.0 {
+        let border = cutoff;
+        if u < border {
             alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border + gradient, u));
         }
     }
 
     if mask & crate::render::transition::EDGE_S != 0 {
-        // Line is written as y = 0.75 + (x - cutoff) * 0.5
-        let border: f32 = 0.75 + (xf - cutoff) * 0.5;
-        let m: f32 = 0.5;
-        let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
-        let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
-        if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(0.0, gradient, d));
-        }
-        if d < 0.0 {
+        let border = cutoff;
+        if v < border {
             alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border + gradient, v));
         }
     }
 
     if mask & crate::render::transition::EDGE_E != 0 {
-        // Line is written as y = 0.75 + (1.0 - x - cutoff) * 0.5
-        let border: f32 = 0.75 + (1.0 - xf - cutoff) * 0.5;
-        let m: f32 = 0.5;
-        let denom: f32 = (m * m + 1.0).sqrt(); // sqrt(1.25) ~= 1.1180
-        let d: f32 = (border - yf) / denom; // >0 above line, <0 below line
-        if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(0.0, gradient, d));
-        }
-        if d < 0.0 {
+        let border = 1.0 - cutoff;
+        if u > border {
             alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border - gradient, u));
         }
     }
 
