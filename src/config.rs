@@ -72,11 +72,3 @@ pub fn output_path_for_config(
         .unwrap_or("output");
     Path::new(default_out_dir).join(format!("{stem}.png"))
 }
-
-pub fn resolve_path(base: &Path, rel: &Path) -> PathBuf {
-    if rel.is_absolute() {
-        rel.to_path_buf()
-    } else {
-        base.parent().unwrap_or_else(|| Path::new(".")).join(rel)
-    }
-}

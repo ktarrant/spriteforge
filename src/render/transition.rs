@@ -3,6 +3,7 @@ use image::{ImageBuffer, Rgba};
 use crate::config::{TilesheetEntry, TransitionOverrides};
 use crate::render::util;
 use spriteforge_assets::all_transition_masks;
+#[allow(unused_imports)]
 pub use spriteforge_assets::{
     normalize_mask, CORNER_MASK, CORNER_NE, CORNER_NW, CORNER_SE, CORNER_SW, EDGE_E, EDGE_MASK,
     EDGE_N, EDGE_S, EDGE_W,
@@ -10,7 +11,7 @@ pub use spriteforge_assets::{
 
 pub fn render_transition_tilesheet<F>(
     size: u32,
-    bg: Rgba<u8>,
+    _bg: Rgba<u8>,
     entries: &[TilesheetEntry],
     columns: u32,
     padding: u32,

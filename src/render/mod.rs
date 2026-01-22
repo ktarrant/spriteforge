@@ -27,8 +27,8 @@ pub fn render_tilesheet(
             entries,
             columns,
             padding,
-            |mask, seed, overrides| {
-                grass::render_grass_transition_tile(size, bg, seed, config, mask, overrides)
+            |mask, _seed, overrides| {
+                grass::render_grass_transition_tile(size, bg, _seed, config, mask, overrides)
             },
         );
     }
@@ -39,7 +39,7 @@ pub fn render_tilesheet(
             entries,
             columns,
             padding,
-            |mask, seed, overrides| {
+            |mask, _seed, overrides| {
                 water::render_water_transition_tile(size, bg, config, mask, overrides)
             },
         );

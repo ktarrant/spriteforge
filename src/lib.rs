@@ -5,9 +5,7 @@ use crate::config::{
     load_tile_config, output_path_for_config, TileConfig, TilesheetEntry, TransitionOverrides,
     DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
 };
-use crate::render::{
-    parse_hex_color, render_tile, render_tilesheet, render_tilesheet_mask, transition,
-};
+use crate::render::{parse_hex_color, render_tile, render_tilesheet, render_tilesheet_mask};
 use spriteforge_assets::{TileMetadata, TilesheetMetadata};
 
 mod config;
@@ -178,25 +176,6 @@ fn mask_output_path(out_path: &Path) -> std::path::PathBuf {
         .unwrap_or("tilesheet");
     let file_name = format!("{stem}_mask.png");
     out_path.with_file_name(file_name)
-}
-
-fn render_single_tile(
-    tile: &TileConfig,
-    _config_path: &Path,
-    args: &Args,
-) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
-    let size = args.size.or(tile.size).unwrap_or(256);
-    let bg_hex = args
-        .bg
-        .clone()
-        .or_else(|| tile.bg.clone())
-        .unwrap_or_else(|| "transparent".to_string());
-    let bg = parse_hex_color(&bg_hex)?;
-    let seed = args
-        .seed
-        .or(tile.seed)
-        .unwrap_or_else(rand::random::<u64>);
-    render_tile(size, bg, seed, tile, None, None)
 }
 
 fn write_tilesheet_metadata(

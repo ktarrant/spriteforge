@@ -3,7 +3,6 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use crate::config::{TileConfig, TransitionOverrides};
-use crate::render::transition;
 use crate::render::util::{blit, draw_isometric_ground, parse_hex_color};
 use spriteforge_assets::edge_weight_for_mask;
 

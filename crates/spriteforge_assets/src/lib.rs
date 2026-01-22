@@ -14,10 +14,6 @@ pub const CORNER_NW: u8 = 1 << 7;
 pub const EDGE_MASK: u8 = EDGE_N | EDGE_E | EDGE_S | EDGE_W;
 pub const CORNER_MASK: u8 = CORNER_NE | CORNER_SE | CORNER_SW | CORNER_NW;
 
-const EDGE_N_MASK: u8 = 0b10010001;
-const EDGE_W_MASK: u8 = 0b11001000;
-const EDGE_S_MASK: u8 = 0b01100100;
-const EDGE_E_MASK: u8 = 0b00110010;
 
 pub fn uv_from_xy(xf: f32, yf: f32) -> (f32, f32) {
     // Left vertex of the diamond in normalized image coords

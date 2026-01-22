@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::asset::AssetPlugin;
 use bevy::prelude::*;
 use bevy::render::render_asset::RenderAssetUsages;
