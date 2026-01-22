@@ -19,6 +19,162 @@ const EDGE_W_MASK: u8 = 0b11001000;
 const EDGE_S_MASK: u8 = 0b01100100;
 const EDGE_E_MASK: u8 = 0b00110010;
 
+pub fn uv_from_xy(xf: f32, yf: f32) -> (f32, f32) {
+    // Left vertex of the diamond in normalized image coords
+    let lx = 0.0;
+    let ly = 0.75;
+
+    let dx = xf - lx;
+    let dy = yf - ly;
+
+    let u: f32 = dx + 2.0 * dy;
+    let v: f32 = u - dy * 4.0;
+
+    (u, v)
+}
+
+pub fn xy_from_uv(u: f32, v: f32) -> (f32, f32) {
+    let x = (u + v) * 0.5;
+    let y = (u - v) * 0.25 + 0.75;
+
+    (x, y)
+}
+
+pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f32) -> f32 {
+    let mut alpha: f32 = 1.0;
+    let (u, v): (f32, f32) = uv_from_xy(xf, yf);
+
+    if mask & EDGE_N != 0 {
+        let border = 1.0 - cutoff;
+        if v > border {
+            alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border - gradient, v));
+        }
+    }
+
+    if mask & EDGE_W != 0 {
+        let border = cutoff;
+        if u < border {
+            alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border + gradient, u));
+        }
+    }
+
+    if mask & EDGE_S != 0 {
+        let border = cutoff;
+        if v < border {
+            alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border + gradient, v));
+        }
+    }
+
+    if mask & EDGE_E != 0 {
+        let border = 1.0 - cutoff;
+        if u > border {
+            alpha = 0.0;
+        } else if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(border, border - gradient, u));
+        }
+    }
+
+    if mask & CORNER_NE != 0 {
+        let du = u - 1.0;
+        let dv = v - 1.0;
+        let d = (du * du + dv * dv).sqrt();
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
+        }
+        if d < cutoff {
+            alpha = 0.0;
+        }
+    }
+
+    if mask & CORNER_NW != 0 {
+        let du = u;
+        let dv = v - 1.0;
+        let d = (du * du + dv * dv).sqrt();
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
+        }
+        if d < cutoff {
+            alpha = 0.0;
+        }
+    }
+
+    if mask & CORNER_SW != 0 {
+        let du = u;
+        let dv = v;
+        let d = (du * du + dv * dv).sqrt();
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
+        }
+        if d < cutoff {
+            alpha = 0.0;
+        }
+    }
+
+    if mask & CORNER_SE != 0 {
+        let du = u - 1.0;
+        let dv = v;
+        let d = (du * du + dv * dv).sqrt();
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
+        }
+        if d < cutoff {
+            alpha = 0.0;
+        }
+    }
+
+    if cutoff > 0.0 && (mask & EDGE_E != 0) && (mask & EDGE_N != 0) {
+        let cx = 1.0 - cutoff * 2.0;
+        let cy = 0.75;
+        let dx = xf - cx;
+        let dy = yf - cy;
+        let radius = cutoff * 0.5;
+        if (dx * dx + dy * dy >= radius * radius) && (xf > cx) {
+            alpha = 0.0;
+        }
+    }
+
+    if cutoff > 0.0 && (mask & EDGE_S != 0) && (mask & EDGE_W != 0) {
+        let cx = cutoff * 2.0;
+        let cy = 0.75;
+        let dx = xf - cx;
+        let dy = yf - cy;
+        let radius = cutoff * 0.5;
+        if (dx * dx + dy * dy >= radius * radius) && (xf < cx) {
+            alpha = 0.0;
+        }
+    }
+
+    if cutoff > 0.0 && (mask & EDGE_W != 0) && (mask & EDGE_N != 0) {
+        let cx = 0.5;
+        let cy = 0.5 + cutoff * 4.8;
+        let dx = xf - cx;
+        let dy = yf - cy;
+        let radius = cutoff * 4.0;
+        if dx * dx + dy * dy >= radius * radius && yf < cy {
+            alpha = 0.0;
+        }
+    }
+
+    if cutoff > 0.0 && (mask & EDGE_S != 0) && (mask & EDGE_E != 0) {
+        let cx = 0.5;
+        let cy = 1.0 - cutoff * 4.8;
+        let dx = xf - cx;
+        let dy = yf - cy;
+        let radius = cutoff * 4.0;
+        if dx * dx + dy * dy >= radius * radius && yf > cy {
+            alpha = 0.0;
+        }
+    }
+
+    alpha.clamp(0.0, 1.0)
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TilesheetMetadata {
     pub image: String,
@@ -113,13 +269,70 @@ pub fn mask_corners(mask: u8) -> u8 {
     mask & CORNER_MASK
 }
 
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    const EPS: f32 = 1e-6;
 
     #[test]
     fn transition_mask_count() {
         let masks = all_transition_masks();
-        assert_eq!(masks.len(), 74);
+        assert_eq!(masks.len(), 46);
+    }
+
+    fn assert_close(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() <= EPS,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn uv_from_xy_matches_expected_points() {
+        let (u, v) = uv_from_xy(0.0, 0.75);
+        assert_close(u, 0.0);
+        assert_close(v, 0.0);
+
+        let (u, v) = uv_from_xy(0.5, 1.0);
+        assert_close(u, 1.0);
+        assert_close(v, 0.0);
+
+        let (u, v) = uv_from_xy(0.5, 0.5);
+        assert_close(u, 0.0);
+        assert_close(v, 1.0);
+
+        let (u, v) = uv_from_xy(1.0, 0.75);
+        assert_close(u, 1.0);
+        assert_close(v, 1.0);
+    }
+
+    #[test]
+    fn uv_xy_roundtrip() {
+        let samples = [
+            (0.0, 0.75),
+            (0.5, 0.5),
+            (0.5, 1.0),
+            (1.0, 0.75),
+            (0.25, 0.875),
+        ];
+        for (xf, yf) in samples {
+            let (u, v) = uv_from_xy(xf, yf);
+            let (x2, y2) = xy_from_uv(u, v);
+            assert_close(x2, xf);
+            assert_close(y2, yf);
+        }
+
+        let uv_samples = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (0.2, 0.8)];
+        for (u, v) in uv_samples {
+            let (xf, yf) = xy_from_uv(u, v);
+            let (u2, v2) = uv_from_xy(xf, yf);
+            assert_close(u2, u);
+            assert_close(v2, v);
+        }
     }
 }

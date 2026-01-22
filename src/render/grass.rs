@@ -4,7 +4,8 @@ use rand::{Rng, SeedableRng};
 
 use crate::config::{TileConfig, TransitionOverrides};
 use crate::render::transition;
-use crate::render::util::{blit, draw_isometric_ground, edge_weight_for_mask, parse_hex_color};
+use crate::render::util::{blit, draw_isometric_ground, parse_hex_color};
+use spriteforge_assets::edge_weight_for_mask;
 
 pub fn render_grass_tile(
     size: u32,

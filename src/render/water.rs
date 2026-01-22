@@ -1,7 +1,8 @@
 use image::{ImageBuffer, Rgba};
 
 use crate::config::TileConfig;
-use crate::render::util::{draw_isometric_ground, edge_weight_for_mask, parse_hex_color};
+use crate::render::util::{draw_isometric_ground, parse_hex_color};
+use spriteforge_assets::edge_weight_for_mask;
 
 pub fn render_water_tile(
     size: u32,

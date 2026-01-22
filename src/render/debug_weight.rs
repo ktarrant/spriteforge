@@ -2,7 +2,8 @@ use image::{ImageBuffer, Rgba};
 
 use crate::config::TileConfig;
 use crate::render::transition;
-use crate::render::util::{draw_isometric_ground, edge_weight_for_mask};
+use crate::render::util::draw_isometric_ground;
+use spriteforge_assets::edge_weight_for_mask;
 
 pub fn render_weight_debug_tile(
     size: u32,
