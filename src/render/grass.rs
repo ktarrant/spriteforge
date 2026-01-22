@@ -50,6 +50,8 @@ pub fn render_grass_transition_tile(
     let mut density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
     let mut bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
     let mut falloff = config.transition_falloff.unwrap_or(2.2);
+    let mut edge_cutoff = config.grass_edge_cutoff.unwrap_or(0.0).clamp(0.0, 1.0);
+    let mut edge_gradient = config.grass_edge_gradient.unwrap_or(1.3).max(0.0);
     if let Some(overrides) = overrides {
         if let Some(override_density) = overrides.density {
             density = override_density.clamp(0.0, 1.0);
@@ -59,6 +61,12 @@ pub fn render_grass_transition_tile(
         }
         if let Some(override_falloff) = overrides.falloff {
             falloff = override_falloff;
+        }
+        if let Some(override_cutoff) = overrides.grass_edge_cutoff {
+            edge_cutoff = override_cutoff.clamp(0.0, 1.0);
+        }
+        if let Some(override_gradient) = overrides.grass_edge_gradient {
+            edge_gradient = override_gradient.max(0.0);
         }
     }
     add_grass_blades_weighted(
@@ -71,6 +79,8 @@ pub fn render_grass_transition_tile(
         density,
         bias,
         transition_mask,
+        edge_cutoff,
+        edge_gradient,
         falloff,
     );
 
@@ -111,6 +121,8 @@ pub fn add_grass_blades_weighted(
     density: f32,
     bias: f32,
     transition_mask: u8,
+    edge_cutoff: f32,
+    edge_gradient: f32,
     falloff: f32,
 ) {
     let min_blade = blade_min.max(1);
@@ -125,7 +137,9 @@ pub fn add_grass_blades_weighted(
         }
         let xf = x as f32 / w;
         let yf = y as f32 / h;
-        let edge_weight = edge_weight_for_mask(transition_mask, xf, yf, 0.0, 1.0);
+        let edge_weight =
+            edge_weight_for_mask(transition_mask, xf, yf, edge_cutoff, edge_gradient)
+                .powf(falloff);
         let prob = density * ((1.0 - bias) + bias * edge_weight);
         if rng.gen_range(0.0..1.0) > prob {
             continue;

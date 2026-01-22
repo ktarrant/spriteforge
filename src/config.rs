@@ -18,6 +18,8 @@ pub struct TileConfig {
     pub blade_max: Option<i32>,
     pub grass_base: Option<String>,
     pub grass_shades: Option<[String; 3]>,
+    pub grass_edge_cutoff: Option<f32>,
+    pub grass_edge_gradient: Option<f32>,
     pub water_base: Option<String>,
     pub water_edge_cutoff: Option<f32>,
     pub path_base: Option<String>,
@@ -45,6 +47,8 @@ pub struct TransitionOverrides {
     pub bias: Option<f32>,
     pub falloff: Option<f32>,
     pub water_edge_cutoff: Option<f32>,
+    pub grass_edge_cutoff: Option<f32>,
+    pub grass_edge_gradient: Option<f32>,
     pub path_edge_cutoff: Option<f32>,
 }
 

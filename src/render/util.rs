@@ -104,63 +104,49 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
     }
 
     if mask & crate::render::transition::CORNER_NE != 0 {
-        let cx = 1.0 - cutoff * 0.25;
-        let cy = 0.75;
-        let dx = xf - cx;
-        let dy = yf - cy;
-        let radius = cutoff * 0.4;
-        let d = (dx * dx + dy * dy).sqrt();
-        if xf > cx {
-            alpha = 0.0;
-        } else if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
+        let du = u - 1.0;
+        let dv = v - 1.0;
+        let d = (du * du + dv * dv).sqrt();
+        if gradient > 0.0 {
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
         }
-        if d < radius {
+        if d < cutoff {
             alpha = 0.0;
         }
     }
 
     if mask & crate::render::transition::CORNER_NW != 0 {
-        let cx = 0.5;
-        let cy = 0.5 - cutoff * 0.6;
-        let dx = xf - cx;
-        let dy = yf - cy;
-        let radius = cutoff;
-        let d = (dx * dx + dy * dy).sqrt();
+        let du = u;
+        let dv = v - 1.0;
+        let d = (du * du + dv * dv).sqrt();
         if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
         }
-        if d < radius {
+        if d < cutoff {
             alpha = 0.0;
         }
     }
 
     if mask & crate::render::transition::CORNER_SW != 0 {
-        let cx = cutoff * 0.25;
-        let cy = 0.75;
-        let dx = xf - cx;
-        let dy = yf - cy;
-        let radius = cutoff * 0.4;
-        let d = (dx * dx + dy * dy).sqrt();
+        let du = u;
+        let dv = v;
+        let d = (du * du + dv * dv).sqrt();
         if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
         }
-        if d < radius {
+        if d < cutoff {
             alpha = 0.0;
         }
     }
 
     if mask & crate::render::transition::CORNER_SE != 0 {
-        let cx = 0.5;
-        let cy = 1.0 + cutoff * 0.6;
-        let dx = xf - cx;
-        let dy = yf - cy;
-        let radius = cutoff;
-        let d = (dx * dx + dy * dy).sqrt();
+        let du = u - 1.0;
+        let dv = v;
+        let d = (du * du + dv * dv).sqrt();
         if gradient > 0.0 {
-            alpha = alpha.min(smoothstep(radius, radius + gradient, d));
+            alpha = alpha.min(smoothstep(cutoff, cutoff + gradient, d));
         }
-        if d < radius {
+        if d < cutoff {
             alpha = 0.0;
         }
     }
