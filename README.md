@@ -138,7 +138,9 @@ Path transition tile example (transparent edge cutout):
   "bg": "transparent",
   "seed": 6060,
   "path_base": "#6b6b6b",
-  "path_edge_cutoff": 0.2,
+  "path_edge_cutoff": 1,
+  "path_brick_count": 8,
+  "path_brick_crack": 0.1,
   "tilesheet_seed_start": 401,
   "tilesheet_columns": 4,
   "tilesheet_padding": 0
