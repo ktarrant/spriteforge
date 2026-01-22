@@ -50,25 +50,14 @@ pub fn load_tilesheet_metadata(path: &Path) -> Result<TilesheetMetadata, String>
 }
 
 pub fn normalize_mask(mask: u8) -> u8 {
-    let edges = mask & EDGE_MASK;
-    if edges.count_ones() >= 2 {
-        return edges;
-    }
+    let mut mask = !mask;
 
-    let mut mask = mask;
-    if mask & EDGE_N_MASK == EDGE_N_MASK {
-        mask = (mask & !EDGE_N_MASK) | EDGE_N;
-    }
-    if mask & EDGE_W_MASK == EDGE_W_MASK {
-        mask = (mask & !EDGE_W_MASK) | EDGE_W;
-    }
-    if mask & EDGE_S_MASK == EDGE_S_MASK {
-        mask = (mask & !EDGE_S_MASK) | EDGE_S;
-    }
-    if mask & EDGE_E_MASK == EDGE_E_MASK {
-        mask = (mask & !EDGE_E_MASK) | EDGE_E;
-    }
-    mask
+    if (mask & (EDGE_N | EDGE_E)) != (EDGE_N | EDGE_E) { mask &= !CORNER_NE; }
+    if (mask & (EDGE_S | EDGE_E)) != (EDGE_S | EDGE_E) { mask &= !CORNER_SE; }
+    if (mask & (EDGE_S | EDGE_W)) != (EDGE_S | EDGE_W) { mask &= !CORNER_SW; }
+    if (mask & (EDGE_N | EDGE_W)) != (EDGE_N | EDGE_W) { mask &= !CORNER_NW; }
+
+    !mask
 }
 
 pub fn all_transition_masks() -> Vec<u8> {
