@@ -310,7 +310,7 @@ fn setup(
         asset_server.load(paths.water_image.to_string_lossy().to_string());
     let water_transition_texture: Handle<Image> =
         asset_server.load(paths.water_transition_image.to_string_lossy().to_string());
-    let _water_mask_texture: Handle<Image> =
+    let water_mask_texture: Handle<Image> =
         asset_server.load(paths.water_mask_image.to_string_lossy().to_string());
     let water_transition_mask_texture: Handle<Image> =
         asset_server.load(paths.water_transition_mask_image.to_string_lossy().to_string());
@@ -333,7 +333,14 @@ fn setup(
         y: (grass_meta.tile_size as f32) * 0.5,
     };
     let water_material = materials.add(WaterFoamMaterial {
-        mask_texture: water_transition_mask_texture.clone(),
+        mask_texture: water_mask_texture,
+        params: WaterFoamParams {
+            foam_color: Vec4::new(0.18, 0.0, 0.0, 0.0),
+            foam_settings: Vec4::new(0.012, 3.0, 0.2, 0.0),
+        },
+    });
+    let water_transition_material = materials.add(WaterFoamMaterial {
+        mask_texture: water_transition_mask_texture,
         params: WaterFoamParams {
             foam_color: Vec4::new(0.18, 0.0, 0.0, 0.0),
             foam_settings: Vec4::new(0.012, 3.0, 0.2, 0.0),
@@ -364,8 +371,8 @@ fn setup(
         transition_texture,
         water_texture,
         water_transition_texture,
-        water_material: water_material.clone(),
-        water_transition_material: water_material,
+        water_material: water_material,
+        water_transition_material: water_transition_material,
         hover_outline_texture,
         selected_outline_texture,
         map_size,
