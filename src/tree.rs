@@ -242,11 +242,22 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
     let mut leaves = Vec::new();
     let target_leaf_count = settings.max_leaves as usize;
     if target_leaf_count > 0 {
-        if target_leaf_count >= initial_attraction_points.len() {
-            for point in &initial_attraction_points {
-                let closest = nearest_node(&nodes, *point);
+        let min_leaf_z = settings.trunk_height * 0.6;
+        let eligible_nodes: Vec<Vec3> = nodes
+            .iter()
+            .map(|node| node.position)
+            .filter(|pos| pos.z > min_leaf_z)
+            .collect();
+        let eligible_attraction_points: Vec<Vec3> = initial_attraction_points
+            .iter()
+            .map(|point| nearest_node(&nodes, *point))
+            .filter(|pos| pos.z > min_leaf_z)
+            .collect();
+
+        if target_leaf_count >= eligible_attraction_points.len() {
+            for position in &eligible_attraction_points {
                 let (stem_start, stem_end, normal) = leaf_stem_for_point(
-                    closest,
+                    *position,
                     tree_center,
                     &segments,
                     settings.leaf_size,
@@ -265,8 +276,11 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
                 });
             }
             while leaves.len() < target_leaf_count {
-                let idx = rng.gen_range(0..nodes.len());
-                let position = nodes[idx].position;
+                if eligible_nodes.is_empty() {
+                    break;
+                }
+                let idx = rng.gen_range(0..eligible_nodes.len());
+                let position = eligible_nodes[idx];
                 let (stem_start, stem_end, normal) = leaf_stem_for_point(
                     position,
                     tree_center,
@@ -287,13 +301,12 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
                 });
             }
         } else {
-            let mut indices: Vec<usize> = (0..initial_attraction_points.len()).collect();
+            let mut indices: Vec<usize> = (0..eligible_attraction_points.len()).collect();
             indices.shuffle(&mut rng);
             for idx in indices.into_iter().take(target_leaf_count) {
-                let point = initial_attraction_points[idx];
-                let closest = nearest_node(&nodes, point);
+                let position = eligible_attraction_points[idx];
                 let (stem_start, stem_end, normal) = leaf_stem_for_point(
-                    closest,
+                    position,
                     tree_center,
                     &segments,
                     settings.leaf_size,
