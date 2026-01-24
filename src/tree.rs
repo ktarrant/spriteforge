@@ -128,6 +128,7 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         }
         attraction_points.push(point);
     }
+    let initial_attraction_points = attraction_points.clone();
 
     let mut nodes = Vec::new();
     nodes.push(Node {
@@ -226,20 +227,13 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         segment.normal = (mid - tree_center).normalized();
     }
 
-    let mut leaves = Vec::new();
-    for node in &nodes {
-        if node.children == 0 && node.position.z > settings.trunk_height * 0.6 {
-            leaves.push(TreeLeaf {
-                position: node.position,
-                size: settings.leaf_size,
-                normal: (node.position - tree_center).normalized(),
-            });
-        }
-    }
-    if settings.max_leaves == 0 {
-        leaves.clear();
-    } else if leaves.len() > settings.max_leaves as usize {
-        leaves.truncate(settings.max_leaves as usize);
+    let mut leaves = Vec::with_capacity(initial_attraction_points.len());
+    for point in initial_attraction_points {
+        leaves.push(TreeLeaf {
+            position: point,
+            size: settings.leaf_size,
+            normal: (point - tree_center).normalized(),
+        });
     }
 
     TreeModel { segments, leaves }
