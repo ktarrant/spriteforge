@@ -35,31 +35,49 @@ pub fn render_tree_tile(
         (screen_x.round() as i32, screen_y.round() as i32)
     };
 
-    let mut segments = model.segments;
-    segments.sort_by(|a, b| {
-        let da = (a.start.x + a.start.y + a.start.z + a.end.x + a.end.y + a.end.z) * 0.5;
-        let db = (b.start.x + b.start.y + b.start.z + b.end.x + b.end.y + b.end.z) * 0.5;
-        da.partial_cmp(&db).unwrap_or(Ordering::Equal)
-    });
-
-    for segment in &segments {
-        let (x0, y0) = project(segment.start);
-        let (x1, y1) = project(segment.end);
-        let radius = (segment.radius * projection.scale).round().max(1.0) as i32;
-        draw_thick_line(&mut tile, x0, y0, x1, y1, radius, trunk_color);
+    let mut draw_items = Vec::with_capacity(model.segments.len() + model.leaves.len());
+    for segment in &model.segments {
+        let depth = (segment.start.x + segment.start.y + segment.end.x + segment.end.y) * 0.5;
+        draw_items.push(DrawItem::Segment {
+            depth,
+            start: segment.start,
+            end: segment.end,
+            radius: segment.radius,
+        });
+    }
+    for leaf in &model.leaves {
+        let depth = leaf.position.x + leaf.position.y;
+        draw_items.push(DrawItem::Leaf {
+            depth,
+            position: leaf.position,
+            radius: leaf.size,
+        });
     }
 
-    let mut leaves = model.leaves;
-    leaves.sort_by(|a, b| {
-        let da = a.position.x + a.position.y + a.position.z;
-        let db = b.position.x + b.position.y + b.position.z;
-        da.partial_cmp(&db).unwrap_or(Ordering::Equal)
-    });
-
-    for leaf in &leaves {
-        let (x, y) = project(leaf.position);
-        let radius = (leaf.size * projection.scale).round().max(1.0) as i32;
-        draw_filled_circle(&mut tile, x, y, radius, leaf_color);
+    draw_items.sort_by(|a, b| a.depth().partial_cmp(&b.depth()).unwrap_or(Ordering::Equal));
+    for item in draw_items {
+        match item {
+            DrawItem::Segment {
+                start,
+                end,
+                radius,
+                ..
+            } => {
+                let (x0, y0) = project(start);
+                let (x1, y1) = project(end);
+                let radius = (radius * projection.scale).round().max(1.0) as i32;
+                draw_thick_line(&mut tile, x0, y0, x1, y1, radius, trunk_color);
+            }
+            DrawItem::Leaf {
+                position,
+                radius,
+                ..
+            } => {
+                let (x, y) = project(position);
+                let radius = (radius * projection.scale).round().max(1.0) as i32;
+                draw_filled_circle(&mut tile, x, y, radius, leaf_color);
+            }
+        }
     }
 
     Ok(tile)
@@ -88,6 +106,29 @@ struct Projection {
     scale: f32,
     offset_x: f32,
     offset_y: f32,
+}
+
+enum DrawItem {
+    Segment {
+        depth: f32,
+        start: Vec3,
+        end: Vec3,
+        radius: f32,
+    },
+    Leaf {
+        depth: f32,
+        position: Vec3,
+        radius: f32,
+    },
+}
+
+impl DrawItem {
+    fn depth(&self) -> f32 {
+        match self {
+            DrawItem::Segment { depth, .. } => *depth,
+            DrawItem::Leaf { depth, .. } => *depth,
+        }
+    }
 }
 
 impl Projection {
