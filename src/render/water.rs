@@ -46,7 +46,6 @@ pub fn render_water_transition_tile(
     draw_isometric_ground(&mut img, sprite_width, sprite_height, water);
     let gradient = 0.0;
     let width = img.width().max(1) as f32;
-    let height = img.height().max(1) as f32;
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         if pixel.0[3] == 0 {
             continue;
@@ -110,7 +109,6 @@ pub fn render_water_transition_mask_tile(
         }
     }
     let width = tile.width().max(1) as f32;
-    let height = tile.height().max(1) as f32;
     for (x, y, pixel) in tile.enumerate_pixels_mut() {
         if pixel.0[3] == 0 {
             continue;

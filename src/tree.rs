@@ -105,7 +105,6 @@ impl Default for TreeSettings {
 #[derive(Debug, Clone)]
 struct Node {
     position: Vec3,
-    parent: Option<usize>,
     children: u32,
 }
 
@@ -131,12 +130,10 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
     let mut nodes = Vec::new();
     nodes.push(Node {
         position: Vec3::new(0.0, 0.0, 0.0),
-        parent: None,
         children: 1,
     });
     nodes.push(Node {
         position: Vec3::new(0.0, 0.0, settings.trunk_height),
-        parent: Some(0),
         children: 0,
     });
 
@@ -196,11 +193,9 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         }
 
         for (parent_idx, position) in new_nodes {
-            let new_index = nodes.len();
             nodes[parent_idx].children += 1;
             nodes.push(Node {
                 position,
-                parent: Some(parent_idx),
                 children: 0,
             });
             segments.push(TreeSegment {
