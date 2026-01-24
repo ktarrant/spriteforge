@@ -325,7 +325,6 @@ fn rasterize_normal_sphere(
             if dx_screen * dx_screen + dy_screen * dy_screen > screen_radius * screen_radius {
                 continue;
             }
-            let (dx_world, dy_world) = screen_to_world_delta(dx_screen, dy_screen, projection.scale);
             let idx = (y as u32 * sprite_width + x as u32) as usize;
             if depth_value <= depth[idx] {
                 continue;
@@ -334,17 +333,6 @@ fn rasterize_normal_sphere(
             mask.put_pixel(x as u32, y as u32, encode_normal(normal));
         }
     }
-}
-
-fn screen_to_world_delta(dx_screen: f32, dy_screen: f32, scale: f32) -> (f32, f32) {
-    if scale <= f32::EPSILON {
-        return (0.0, 0.0);
-    }
-    let a = dx_screen / scale;
-    let b = dy_screen / scale;
-    let dx = (a + 2.0 * b) * 0.5;
-    let dy = (2.0 * b - a) * 0.5;
-    (dx, dy)
 }
 
 fn encode_normal(normal: Vec3) -> Rgba<u8> {
