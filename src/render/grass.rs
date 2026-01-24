@@ -2,7 +2,7 @@ use image::{ImageBuffer, Rgba};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-use crate::config::{TileConfig, TransitionOverrides};
+use crate::config::{require_field, TileConfig, TransitionOverrides};
 use crate::render::util::{blit, draw_isometric_ground, parse_hex_color};
 use spriteforge_assets::edge_weight_for_mask;
 
@@ -23,10 +23,8 @@ pub fn render_grass_tile(
     draw_isometric_ground(&mut base, sprite_width, sprite_height, palette[0]);
     blit(&mut img, &base);
 
-    let blade_min = config.blade_min.unwrap_or(1);
-    let blade_max = config
-        .blade_max
-        .unwrap_or_else(|| default_blade_max(sprite_width));
+    let blade_min = require_field(config.blade_min, "blade_min")?;
+    let blade_max = require_field(config.blade_max, "blade_max")?;
     add_grass_blades(&mut img, &base, &mut rng, &palette, blade_min, blade_max);
     Ok(img)
 }
@@ -49,15 +47,17 @@ pub fn render_grass_transition_tile(
     let mut base = ImageBuffer::from_pixel(sprite_width, sprite_height, Rgba([0, 0, 0, 0]));
     draw_isometric_ground(&mut base, sprite_width, sprite_height, Rgba([0, 0, 0, 255]));
 
-    let blade_min = config.blade_min.unwrap_or(1);
-    let blade_max = config
-        .blade_max
-        .unwrap_or_else(|| default_blade_max(sprite_width));
-    let mut density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
-    let mut bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
-    let mut falloff = config.transition_falloff.unwrap_or(2.2);
-    let mut edge_cutoff = config.grass_edge_cutoff.unwrap_or(0.0).clamp(0.0, 1.0);
-    let mut edge_gradient = config.grass_edge_gradient.unwrap_or(1.3).max(0.0);
+    let blade_min = require_field(config.blade_min, "blade_min")?;
+    let blade_max = require_field(config.blade_max, "blade_max")?;
+    let mut density = require_field(config.transition_density, "transition_density")?
+        .clamp(0.0, 1.0);
+    let mut bias =
+        require_field(config.transition_bias, "transition_bias")?.clamp(0.0, 1.0);
+    let mut falloff = require_field(config.transition_falloff, "transition_falloff")?;
+    let mut edge_cutoff =
+        require_field(config.grass_edge_cutoff, "grass_edge_cutoff")?.clamp(0.0, 1.0);
+    let mut edge_gradient =
+        require_field(config.grass_edge_gradient, "grass_edge_gradient")?.max(0.0);
     if let Some(overrides) = overrides {
         if let Some(override_density) = overrides.density {
             density = override_density.clamp(0.0, 1.0);
@@ -157,20 +157,9 @@ pub fn add_grass_blades_weighted(
     }
 }
 
-pub fn default_blade_max(size: u32) -> i32 {
-    ((size / 32).max(2)).min(8) as i32
-}
-
 pub fn grass_palette(config: &TileConfig) -> Result<[Rgba<u8>; 4], String> {
-    let base_hex = config
-        .grass_base
-        .clone()
-        .unwrap_or_else(|| "#205c3e".to_string());
-    let shades = config.grass_shades.clone().unwrap_or([
-        "#2f6f4a".to_string(),
-        "#3f8f5e".to_string(),
-        "#58b174".to_string(),
-    ]);
+    let base_hex = require_field(config.grass_base.clone(), "grass_base")?;
+    let shades = require_field(config.grass_shades.clone(), "grass_shades")?;
     Ok([
         parse_hex_color(&base_hex)?,
         parse_hex_color(&shades[0])?,

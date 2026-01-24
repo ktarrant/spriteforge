@@ -1,6 +1,6 @@
 use image::{ImageBuffer, Rgba};
 
-use crate::config::TileConfig;
+use crate::config::{require_field, TileConfig};
 use crate::render::util::{draw_isometric_ground, parse_hex_color};
 use spriteforge_assets::edge_weight_for_mask;
 
@@ -14,12 +14,8 @@ pub fn render_water_tile(
         return Err(format!("Unknown tile name: {}", config.name));
     }
     let mut img = ImageBuffer::from_pixel(sprite_width, sprite_height, bg);
-    let water = parse_hex_color(
-        &config
-            .water_base
-            .clone()
-            .unwrap_or_else(|| "#2a4f7a".to_string()),
-    )?;
+    let water_base = require_field(config.water_base.clone(), "water_base")?;
+    let water = parse_hex_color(&water_base)?;
     draw_isometric_ground(&mut img, sprite_width, sprite_height, water);
     Ok(img)
 }
@@ -35,14 +31,11 @@ pub fn render_water_transition_tile(
     if config.name != "water_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    let water = parse_hex_color(
-        &config
-            .water_base
-            .clone()
-            .unwrap_or_else(|| "#2a4f7a".to_string()),
-    )?;
+    let water_base = require_field(config.water_base.clone(), "water_base")?;
+    let water = parse_hex_color(&water_base)?;
     let mask = transition_mask;
-    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
+    let mut cutoff =
+        require_field(config.water_edge_cutoff, "water_edge_cutoff")?.clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {
             cutoff = override_cutoff.clamp(0.0, 1.0);
@@ -93,7 +86,8 @@ pub fn render_water_transition_mask_tile(
         return Err(format!("Unknown tile name: {}", config.name));
     }
     let mask = transition_mask;
-    let mut cutoff = config.water_edge_cutoff.unwrap_or(0.2).clamp(0.0, 1.0);
+    let mut cutoff =
+        require_field(config.water_edge_cutoff, "water_edge_cutoff")?.clamp(0.0, 1.0);
     if let Some(overrides) = overrides {
         if let Some(override_cutoff) = overrides.water_edge_cutoff {
             cutoff = override_cutoff.clamp(0.0, 1.0);
@@ -108,7 +102,8 @@ pub fn render_water_transition_mask_tile(
     );
 
     // Apply water edge transitions
-    let mut gradient = config.water_edge_gradient.unwrap_or(0.2).max(0.0);
+    let mut gradient =
+        require_field(config.water_edge_gradient, "water_edge_gradient")?.max(0.0);
     if let Some(overrides) = overrides {
         if let Some(override_gradient) = overrides.water_edge_gradient {
             gradient = override_gradient.max(0.0);

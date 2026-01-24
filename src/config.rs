@@ -50,6 +50,10 @@ pub struct TileConfig {
     pub tree_leaf_color: Option<String>,
 }
 
+pub fn require_field<T>(value: Option<T>, field: &str) -> Result<T, String> {
+    value.ok_or_else(|| format!("Missing required config field: {field}"))
+}
+
 #[derive(Debug, Clone)]
 pub struct TilesheetEntry {
     pub seed: u64,

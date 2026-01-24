@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use image::{ImageBuffer, Rgba};
 
-use crate::config::TileConfig;
+use crate::config::{require_field, TileConfig};
 use crate::render::parse_hex_color;
 use crate::tree::{generate_tree, TreeSettings, Vec3};
 
@@ -17,20 +17,16 @@ pub fn render_tree_tile(
         return Err(format!("Unknown tile name: {}", config.name));
     }
 
-    let settings = tree_settings_from_config(config);
+    let settings = tree_settings_from_config(config)?;
     let model = generate_tree(seed, &settings);
-    let trunk_color = parse_hex_color(
-        config
-            .tree_trunk_color
-            .as_deref()
-            .unwrap_or("#5b3a22"),
-    )?;
-    let leaf_color = parse_hex_color(
-        config
-            .tree_leaf_color
-            .as_deref()
-            .unwrap_or("#4c7a2f"),
-    )?;
+    let trunk_color = parse_hex_color(&require_field(
+        config.tree_trunk_color.clone(),
+        "tree_trunk_color",
+    )?)?;
+    let leaf_color = parse_hex_color(&require_field(
+        config.tree_leaf_color.clone(),
+        "tree_leaf_color",
+    )?)?;
 
     let mut tile = ImageBuffer::from_pixel(sprite_width, sprite_height, bg);
     let iso_scale = (sprite_width as f32 * 0.35) / settings.crown_radius.max(1.0);
@@ -75,42 +71,23 @@ pub fn render_tree_tile(
     Ok(tile)
 }
 
-fn tree_settings_from_config(config: &TileConfig) -> TreeSettings {
-    let mut settings = TreeSettings::default();
-    if let Some(value) = config.tree_trunk_height {
-        settings.trunk_height = value;
-    }
-    if let Some(value) = config.tree_crown_radius {
-        settings.crown_radius = value;
-    }
-    if let Some(value) = config.tree_crown_height {
-        settings.crown_height = value;
-    }
-    if let Some(value) = config.tree_attraction_points {
-        settings.attraction_points = value;
-    }
-    if let Some(value) = config.tree_segment_length {
-        settings.segment_length = value;
-    }
-    if let Some(value) = config.tree_influence_distance {
-        settings.influence_distance = value;
-    }
-    if let Some(value) = config.tree_kill_distance {
-        settings.kill_distance = value;
-    }
-    if let Some(value) = config.tree_max_iterations {
-        settings.max_iterations = value;
-    }
-    if let Some(value) = config.tree_base_radius {
-        settings.base_radius = value;
-    }
-    if let Some(value) = config.tree_leaf_size {
-        settings.leaf_size = value;
-    }
-    if let Some(value) = config.tree_leaf_count {
-        settings.max_leaves = value;
-    }
-    settings
+fn tree_settings_from_config(config: &TileConfig) -> Result<TreeSettings, String> {
+    Ok(TreeSettings {
+        trunk_height: require_field(config.tree_trunk_height, "tree_trunk_height")?,
+        crown_radius: require_field(config.tree_crown_radius, "tree_crown_radius")?,
+        crown_height: require_field(config.tree_crown_height, "tree_crown_height")?,
+        attraction_points: require_field(config.tree_attraction_points, "tree_attraction_points")?,
+        segment_length: require_field(config.tree_segment_length, "tree_segment_length")?,
+        influence_distance: require_field(
+            config.tree_influence_distance,
+            "tree_influence_distance",
+        )?,
+        kill_distance: require_field(config.tree_kill_distance, "tree_kill_distance")?,
+        max_iterations: require_field(config.tree_max_iterations, "tree_max_iterations")?,
+        base_radius: require_field(config.tree_base_radius, "tree_base_radius")?,
+        leaf_size: require_field(config.tree_leaf_size, "tree_leaf_size")?,
+        max_leaves: require_field(config.tree_leaf_count, "tree_leaf_count")?,
+    })
 }
 
 fn draw_thick_line(

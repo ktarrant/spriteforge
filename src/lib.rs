@@ -2,8 +2,8 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    load_tile_config, output_path_for_config, TileConfig, TilesheetEntry, TransitionOverrides,
-    DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
+    load_tile_config, output_path_for_config, require_field, TileConfig, TilesheetEntry,
+    TransitionOverrides, DEFAULT_OUT_DIR, TILESET_CONFIG_DIR,
 };
 use crate::render::{parse_hex_color, render_tile, render_tilesheet, render_tilesheet_mask};
 use spriteforge_assets::{TileMetadata, TilesheetMetadata};
@@ -106,17 +106,16 @@ fn build_from_tile_config(
     out_path: &Path,
 ) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
     let size_override = args.size;
-    let sprite_width = size_override
-        .or(tile_config.sprite_width)
-        .unwrap_or(256);
-    let sprite_height = size_override
-        .or(tile_config.sprite_height)
-        .unwrap_or(sprite_width);
-    let bg_hex = args
-        .bg
-        .clone()
-        .or_else(|| tile_config.bg.clone())
-        .unwrap_or_else(|| "transparent".to_string());
+    let mut sprite_width = require_field(tile_config.sprite_width, "sprite_width")?;
+    let mut sprite_height = require_field(tile_config.sprite_height, "sprite_height")?;
+    if let Some(override_size) = size_override {
+        sprite_width = override_size;
+        sprite_height = override_size;
+    }
+    let mut bg_hex = require_field(tile_config.bg.clone(), "bg")?;
+    if let Some(override_bg) = args.bg.clone() {
+        bg_hex = override_bg;
+    }
     let bg = parse_hex_color(&bg_hex)?;
     let is_transition = matches!(
         tile_config.name.as_str(),
@@ -126,20 +125,21 @@ fn build_from_tile_config(
         || tile_config.tilesheet_seed_start.is_some()
         || is_transition;
     if !has_tilesheet {
+        let seed = require_field(tile_config.seed, "seed")?;
         return render_tile(
             sprite_width,
             sprite_height,
             bg,
-            tile_config.seed.unwrap_or(0),
+            seed,
             tile_config,
             None,
             None,
         );
     }
 
-    let columns = tile_config.tilesheet_columns.unwrap_or(4).max(1);
-    let padding = tile_config.tilesheet_padding.unwrap_or(0);
-    let entries = build_tilesheet_entries(tile_config);
+    let columns = require_field(tile_config.tilesheet_columns, "tilesheet_columns")?.max(1);
+    let padding = require_field(tile_config.tilesheet_padding, "tilesheet_padding")?;
+    let entries = build_tilesheet_entries(tile_config)?;
     let image = render_tilesheet(
         sprite_width,
         sprite_height,
@@ -177,17 +177,14 @@ fn build_from_tile_config(
     Ok(image)
 }
 
-fn build_tilesheet_entries(tile_config: &TileConfig) -> Vec<TilesheetEntry> {
-    let seed_start = tile_config
-        .tilesheet_seed_start
-        .or(tile_config.seed)
-        .unwrap_or(1000);
+fn build_tilesheet_entries(tile_config: &TileConfig) -> Result<Vec<TilesheetEntry>, String> {
+    let seed_start = require_field(tile_config.tilesheet_seed_start, "tilesheet_seed_start")?;
     if matches!(
         tile_config.name.as_str(),
         "grass_transition" | "water_transition" | "path_transition" | "debug_weight"
     ) {
         let masks = spriteforge_assets::all_transition_masks();
-        return masks
+        return Ok(masks
             .iter()
             .enumerate()
             .map(|(index, mask)| TilesheetEntry {
@@ -195,16 +192,16 @@ fn build_tilesheet_entries(tile_config: &TileConfig) -> Vec<TilesheetEntry> {
                 overrides: TransitionOverrides::default(),
                 transition_mask: Some(*mask),
             })
-            .collect();
+            .collect());
     }
-    let count = tile_config.tilesheet_count.unwrap_or(1) as usize;
-    (0..count)
+    let count = require_field(tile_config.tilesheet_count, "tilesheet_count")? as usize;
+    Ok((0..count)
         .map(|index| TilesheetEntry {
             seed: seed_start + index as u64,
             overrides: TransitionOverrides::default(),
             transition_mask: None,
         })
-        .collect()
+        .collect())
 }
 
 fn mask_output_path(out_path: &Path) -> std::path::PathBuf {

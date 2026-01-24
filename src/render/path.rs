@@ -1,6 +1,6 @@
 use image::{ImageBuffer, Rgba};
 
-use crate::config::TileConfig;
+use crate::config::{require_field, TileConfig};
 use crate::render::util::{draw_isometric_ground, parse_hex_color};
 use spriteforge_assets::{EDGE_N, EDGE_E, EDGE_W, EDGE_S, uv_from_xy};
 
@@ -43,22 +43,20 @@ fn render_path_tile_with_mask(
     config: &TileConfig,
     transition_mask: u8,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
-    let path = parse_hex_color(
-        &config
-            .path_base
-            .clone()
-            .unwrap_or_else(|| "#6b6b6b".to_string()),
-    )?;
+    let path_base = require_field(config.path_base.clone(), "path_base")?;
+    let path = parse_hex_color(&path_base)?;
 
     let mut img = ImageBuffer::from_pixel(sprite_width, sprite_height, bg);
     draw_isometric_ground(&mut img, sprite_width, sprite_height, path);
 
     // Apply path edge transitions
     let width = img.width().max(1) as f32;
-    let brick_count: u8 = config.path_brick_count.unwrap_or(8).max(1) as u8;
+    let brick_count: u8 = require_field(config.path_brick_count, "path_brick_count")?
+        .max(1) as u8;
     let brick_row_width: f32 = 1.0 / brick_count as f32;
     let brick_col_width: f32 = 1.0 / brick_count as f32;
-    let brick_crack = config.path_brick_crack.unwrap_or(0.10).clamp(0.0, 0.5);
+    let brick_crack =
+        require_field(config.path_brick_crack, "path_brick_crack")?.clamp(0.0, 0.5);
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         if pixel.0[3] == 0 {
             continue;

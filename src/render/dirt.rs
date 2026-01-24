@@ -2,7 +2,7 @@ use image::{ImageBuffer, Rgba};
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 
-use crate::config::TileConfig;
+use crate::config::{require_field, TileConfig};
 use crate::render::util::{blit, draw_isometric_ground, parse_hex_color, random_tile_point};
 
 pub fn render_dirt_tile(
@@ -22,9 +22,7 @@ pub fn render_dirt_tile(
     draw_isometric_ground(&mut base, sprite_width, sprite_height, palette[0]);
     blit(&mut img, &base);
 
-    let splotches = config
-        .dirt_splotch_count
-        .unwrap_or((sprite_width / 3).max(24));
+    let splotches = require_field(config.dirt_splotch_count, "dirt_splotch_count")?;
     for _ in 0..splotches {
         let (cx, cy) = random_tile_point(&base, &mut rng);
         let radius = rng.gen_range(3..=8);
@@ -32,9 +30,7 @@ pub fn render_dirt_tile(
         draw_oval(&mut img, &base, cx, cy, radius * 2, radius, shade);
     }
 
-    let stones = config
-        .dirt_stone_count
-        .unwrap_or((sprite_width / 10).max(6));
+    let stones = require_field(config.dirt_stone_count, "dirt_stone_count")?;
     for _ in 0..stones {
         let (cx, cy) = random_tile_point(&base, &mut rng);
         let radius = rng.gen_range(1..=3);
@@ -50,18 +46,9 @@ pub fn render_dirt_tile(
 }
 
 fn dirt_palette(config: &TileConfig) -> Result<[Rgba<u8>; 5], String> {
-    let base_hex = config
-        .dirt_base
-        .clone()
-        .unwrap_or_else(|| "#6b4a2b".to_string());
-    let splotch_hexes = config.dirt_splotches.clone().unwrap_or([
-        "#6a4a2f".to_string(),
-        "#5c3f27".to_string(),
-    ]);
-    let stone_hexes = config.dirt_stones.clone().unwrap_or([
-        "#4b5057".to_string(),
-        "#3e4349".to_string(),
-    ]);
+    let base_hex = require_field(config.dirt_base.clone(), "dirt_base")?;
+    let splotch_hexes = require_field(config.dirt_splotches.clone(), "dirt_splotches")?;
+    let stone_hexes = require_field(config.dirt_stones.clone(), "dirt_stones")?;
     Ok([
         parse_hex_color(&base_hex)?,
         parse_hex_color(&splotch_hexes[0])?,
