@@ -55,12 +55,14 @@ pub struct TreeSegment {
     pub start: Vec3,
     pub end: Vec3,
     pub radius: f32,
+    pub normal: Vec3,
 }
 
 #[derive(Debug, Clone)]
 pub struct TreeLeaf {
     pub position: Vec3,
     pub size: f32,
+    pub normal: Vec3,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -142,6 +144,7 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         start: nodes[0].position,
         end: nodes[1].position,
         radius: settings.base_radius,
+        normal: Vec3::default(),
     });
 
     let mut iter = 0;
@@ -202,6 +205,7 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
                 start: nodes[parent_idx].position,
                 end: position,
                 radius: 0.0,
+                normal: Vec3::default(),
             });
         }
     }
@@ -212,12 +216,23 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         segment.radius = settings.base_radius * (1.0 - t).powf(0.7).max(0.15);
     }
 
+    let tree_center = compute_tree_center(&segments, &nodes);
+    for segment in segments.iter_mut() {
+        let mid = Vec3::new(
+            (segment.start.x + segment.end.x) * 0.5,
+            (segment.start.y + segment.end.y) * 0.5,
+            (segment.start.z + segment.end.z) * 0.5,
+        );
+        segment.normal = (mid - tree_center).normalized();
+    }
+
     let mut leaves = Vec::new();
     for node in &nodes {
         if node.children == 0 && node.position.z > settings.trunk_height * 0.6 {
             leaves.push(TreeLeaf {
                 position: node.position,
                 size: settings.leaf_size,
+                normal: (node.position - tree_center).normalized(),
             });
         }
     }
@@ -228,6 +243,40 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
     }
 
     TreeModel { segments, leaves }
+}
+
+fn compute_tree_center(segments: &[TreeSegment], nodes: &[Node]) -> Vec3 {
+    let mut min = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
+
+    for segment in segments {
+        expand_bounds(segment.start, segment.radius, &mut min, &mut max);
+        expand_bounds(segment.end, segment.radius, &mut min, &mut max);
+    }
+
+    for node in nodes {
+        expand_bounds(node.position, 0.0, &mut min, &mut max);
+    }
+
+    if !min.x.is_finite() {
+        return Vec3::default();
+    }
+
+    Vec3::new(
+        (min.x + max.x) * 0.5,
+        (min.y + max.y) * 0.5,
+        (min.z + max.z) * 0.5,
+    )
+}
+
+fn expand_bounds(point: Vec3, radius: f32, min: &mut Vec3, max: &mut Vec3) {
+    let r = radius.max(0.0);
+    min.x = min.x.min(point.x - r);
+    min.y = min.y.min(point.y - r);
+    min.z = min.z.min(point.z - r);
+    max.x = max.x.max(point.x + r);
+    max.y = max.y.max(point.y + r);
+    max.z = max.z.max(point.z + r);
 }
 
 #[cfg(test)]
