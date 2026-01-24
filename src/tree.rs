@@ -143,22 +143,29 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
     let initial_attraction_points = attraction_points.clone();
 
     let mut nodes = Vec::new();
+    let mut segments = Vec::new();
+    let trunk_step = settings.segment_length.max(0.05);
+    let trunk_steps = (settings.trunk_height / trunk_step).ceil().max(1.0) as u32;
+    let mut prev_index = 0usize;
     nodes.push(Node {
         position: Vec3::new(0.0, 0.0, 0.0),
         children: 1,
     });
-    nodes.push(Node {
-        position: Vec3::new(0.0, 0.0, settings.trunk_height),
-        children: 0,
-    });
-
-    let mut segments = Vec::new();
-    segments.push(TreeSegment {
-        start: nodes[0].position,
-        end: nodes[1].position,
-        radius: settings.base_radius,
-        normal: Vec3::default(),
-    });
+    for step in 1..=trunk_steps {
+        let z = (step as f32 * trunk_step).min(settings.trunk_height);
+        nodes.push(Node {
+            position: Vec3::new(0.0, 0.0, z),
+            children: if step == trunk_steps { 0 } else { 1 },
+        });
+        let next_index = nodes.len() - 1;
+        segments.push(TreeSegment {
+            start: nodes[prev_index].position,
+            end: nodes[next_index].position,
+            radius: settings.base_radius,
+            normal: Vec3::default(),
+        });
+        prev_index = next_index;
+    }
 
     let mut iter = 0;
     while !attraction_points.is_empty() && iter < settings.max_iterations {
@@ -226,8 +233,10 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
     let max_height = (settings.trunk_height + settings.crown_height).max(0.001);
     for segment in segments.iter_mut() {
         let t = (segment.end.z / max_height).clamp(0.0, 1.0);
-        let taper = (1.0 - t).powf(1.2);
-        segment.radius = (settings.base_radius * taper).max(0.08);
+        let height_factor = 1.0 - t;
+        let taper = height_factor.powf(1.8);
+        let base_scale = 1.0 + 0.5 * height_factor;
+        segment.radius = (settings.base_radius * taper * base_scale).max(0.08);
     }
 
     let tree_center = compute_tree_center(&segments, &nodes);
