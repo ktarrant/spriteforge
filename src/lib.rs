@@ -106,13 +106,12 @@ fn build_from_tile_config(
     out_path: &Path,
 ) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
     let size_override = args.size;
-    let size = size_override.or(tile_config.size).unwrap_or(256);
-    let tile_width = size_override
-        .or(tile_config.tile_width)
-        .unwrap_or(size);
-    let tile_height = size_override
-        .or(tile_config.tile_height)
-        .unwrap_or(size);
+    let sprite_width = size_override
+        .or(tile_config.sprite_width)
+        .unwrap_or(256);
+    let sprite_height = size_override
+        .or(tile_config.sprite_height)
+        .unwrap_or(sprite_width);
     let bg_hex = args
         .bg
         .clone()
@@ -128,8 +127,8 @@ fn build_from_tile_config(
         || is_transition;
     if !has_tilesheet {
         return render_tile(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             tile_config.seed.unwrap_or(0),
             tile_config,
@@ -142,8 +141,8 @@ fn build_from_tile_config(
     let padding = tile_config.tilesheet_padding.unwrap_or(0);
     let entries = build_tilesheet_entries(tile_config);
     let image = render_tilesheet(
-        tile_width,
-        tile_height,
+        sprite_width,
+        sprite_height,
         bg,
         tile_config,
         &entries,
@@ -151,7 +150,14 @@ fn build_from_tile_config(
         padding,
     )?;
     if tile_config.name == "water" || tile_config.name == "water_transition" {
-        let mask = render_tilesheet_mask(tile_width, tile_height, tile_config, &entries, columns, padding)?;
+        let mask = render_tilesheet_mask(
+            sprite_width,
+            sprite_height,
+            tile_config,
+            &entries,
+            columns,
+            padding,
+        )?;
         let mask_path = mask_output_path(out_path);
         if let Some(parent) = mask_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -159,7 +165,15 @@ fn build_from_tile_config(
         mask.save(&mask_path).map_err(|e| e.to_string())?;
         println!("Saved tilesheet mask to {}", mask_path.display());
     }
-    write_tilesheet_metadata(out_path, &entries, tile_width, tile_height, columns, padding, config_path)?;
+    write_tilesheet_metadata(
+        out_path,
+        &entries,
+        sprite_width,
+        sprite_height,
+        columns,
+        padding,
+        config_path,
+    )?;
     Ok(image)
 }
 
@@ -205,8 +219,8 @@ fn mask_output_path(out_path: &Path) -> std::path::PathBuf {
 fn write_tilesheet_metadata(
     out_path: &Path,
     entries: &[TilesheetEntry],
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     columns: u32,
     padding: u32,
     config_path: &Path,
@@ -217,16 +231,16 @@ fn write_tilesheet_metadata(
     for (i, entry) in entries.iter().enumerate() {
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
-        let x = col * tile_width + padding * col;
-        let y = row * tile_height + padding * row;
+        let x = col * sprite_width + padding * col;
+        let y = row * sprite_height + padding * row;
         tiles.push(TileMetadata {
             index: i,
             row,
             col,
             x,
             y,
-            width: tile_width,
-            height: tile_height,
+            width: sprite_width,
+            height: sprite_height,
             seed: entry.seed,
             transition_mask: entry.transition_mask,
         });
@@ -235,9 +249,8 @@ fn write_tilesheet_metadata(
     let meta = TilesheetMetadata {
         image: out_path.to_string_lossy().to_string(),
         config: config_path.to_string_lossy().to_string(),
-        tile_size: tile_width,
-        tile_width: Some(tile_width),
-        tile_height: Some(tile_height),
+        sprite_width: Some(sprite_width),
+        sprite_height: Some(sprite_height),
         columns: cols,
         rows,
         padding,

@@ -14,8 +14,8 @@ mod water;
 pub use util::parse_hex_color;
 
 pub fn render_tilesheet(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
     entries: &[TilesheetEntry],
@@ -24,16 +24,16 @@ pub fn render_tilesheet(
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name == "grass_transition" {
         return transition::render_transition_tilesheet(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             entries,
             columns,
             padding,
             |mask, _seed, overrides| {
                 grass::render_grass_transition_tile(
-                    tile_width,
-                    tile_height,
+                    sprite_width,
+                    sprite_height,
                     bg,
                     _seed,
                     config,
@@ -45,16 +45,16 @@ pub fn render_tilesheet(
     }
     if config.name == "water_transition" {
         return transition::render_transition_tilesheet(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             entries,
             columns,
             padding,
             |mask, _seed, overrides| {
                 water::render_water_transition_tile(
-                    tile_width,
-                    tile_height,
+                    sprite_width,
+                    sprite_height,
                     bg,
                     config,
                     mask,
@@ -65,27 +65,27 @@ pub fn render_tilesheet(
     }
     if config.name == "path_transition" {
         return transition::render_transition_tilesheet(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             entries,
             columns,
             padding,
             |mask, _seed, _overrides| {
-                path::render_path_transition_tile(tile_width, tile_height, bg, config, mask)
+                path::render_path_transition_tile(sprite_width, sprite_height, bg, config, mask)
             },
         );
     }
     let cols = columns.max(1);
     let rows = ((entries.len() as u32) + cols - 1) / cols;
-    let sheet_w = cols * tile_width + padding * (cols.saturating_sub(1));
-    let sheet_h = rows * tile_height + padding * (rows.saturating_sub(1));
+    let sheet_w = cols * sprite_width + padding * (cols.saturating_sub(1));
+    let sheet_h = rows * sprite_height + padding * (rows.saturating_sub(1));
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, entry) in entries.iter().enumerate() {
         let tile = render_tile(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             entry.seed,
             config,
@@ -94,8 +94,8 @@ pub fn render_tilesheet(
         )?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
-        let x = (col * tile_width + padding * col) as i32;
-        let y = (row * tile_height + padding * row) as i32;
+        let x = (col * sprite_width + padding * col) as i32;
+        let y = (row * sprite_height + padding * row) as i32;
         util::blit_offset(&mut sheet, &tile, x, y);
     }
 
@@ -103,8 +103,8 @@ pub fn render_tilesheet(
 }
 
 pub fn render_tilesheet_mask(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     config: &TileConfig,
     entries: &[TilesheetEntry],
     columns: u32,
@@ -112,15 +112,15 @@ pub fn render_tilesheet_mask(
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name == "water_transition" {
         return transition::render_transition_mask_tilesheet(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             entries,
             columns,
             padding,
             |mask, overrides| {
                 water::render_water_transition_mask_tile(
-                    tile_width,
-                    tile_height,
+                    sprite_width,
+                    sprite_height,
                     config,
                     mask,
                     overrides,
@@ -130,22 +130,22 @@ pub fn render_tilesheet_mask(
     }
     let cols = columns.max(1);
     let rows = ((entries.len() as u32) + cols - 1) / cols;
-    let sheet_w = cols * tile_width + padding * (cols.saturating_sub(1));
-    let sheet_h = rows * tile_height + padding * (rows.saturating_sub(1));
+    let sheet_w = cols * sprite_width + padding * (cols.saturating_sub(1));
+    let sheet_h = rows * sprite_height + padding * (rows.saturating_sub(1));
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, entry) in entries.iter().enumerate() {
         let mask_tile = render_tile_mask(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             config,
             entry.transition_mask,
             Some(&entry.overrides),
         )?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
-        let x = (col * tile_width + padding * col) as i32;
-        let y = (row * tile_height + padding * row) as i32;
+        let x = (col * sprite_width + padding * col) as i32;
+        let y = (row * sprite_height + padding * row) as i32;
         util::blit_offset(&mut sheet, &mask_tile, x, y);
     }
 
@@ -153,17 +153,17 @@ pub fn render_tilesheet_mask(
 }
 
 fn render_tile_mask(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     config: &TileConfig,
     transition_mask: Option<u8>,
     overrides: Option<&TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
-        "water" => Ok(water::render_water_mask_tile(tile_width, tile_height)),
+        "water" => Ok(water::render_water_mask_tile(sprite_width, sprite_height)),
         "water_transition" => water::render_water_transition_mask_tile(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             config,
             transition_mask.unwrap_or(transition::EDGE_N),
             overrides,
@@ -173,8 +173,8 @@ fn render_tile_mask(
 }
 
 pub fn render_tile(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
@@ -182,40 +182,40 @@ pub fn render_tile(
     overrides: Option<&TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     match config.name.as_str() {
-        "grass" => grass::render_grass_tile(tile_width, tile_height, bg, seed, config),
-        "dirt" => dirt::render_dirt_tile(tile_width, tile_height, bg, seed, config),
+        "grass" => grass::render_grass_tile(sprite_width, sprite_height, bg, seed, config),
+        "dirt" => dirt::render_dirt_tile(sprite_width, sprite_height, bg, seed, config),
         "grass_transition" => grass::render_grass_transition_tile(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             seed,
             config,
             transition_mask.unwrap_or(transition::EDGE_N),
             overrides,
         ),
-        "water" => water::render_water_tile(tile_width, tile_height, bg, config),
+        "water" => water::render_water_tile(sprite_width, sprite_height, bg, config),
         "water_transition" => {
             water::render_water_transition_tile(
-                tile_width,
-                tile_height,
+                sprite_width,
+                sprite_height,
                 bg,
                 config,
                 transition_mask.unwrap_or(transition::EDGE_N),
                 overrides,
             )
         }
-        "path" => path::render_path_tile(tile_width, tile_height, bg, config),
+        "path" => path::render_path_tile(sprite_width, sprite_height, bg, config),
         "path_transition" => path::render_path_transition_tile(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             config,
             transition_mask.unwrap_or(transition::EDGE_N),
         ),
-        "tree" => tree::render_tree_tile(tile_width, tile_height, bg, seed, config),
+        "tree" => tree::render_tree_tile(sprite_width, sprite_height, bg, seed, config),
         "debug_weight" => debug_weight::render_weight_debug_tile(
-            tile_width,
-            tile_height,
+            sprite_width,
+            sprite_height,
             bg,
             config,
             transition_mask,

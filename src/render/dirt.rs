@@ -6,8 +6,8 @@ use crate::config::TileConfig;
 use crate::render::util::{blit, draw_isometric_ground, parse_hex_color, random_tile_point};
 
 pub fn render_dirt_tile(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
@@ -17,14 +17,14 @@ pub fn render_dirt_tile(
     }
     let mut rng = StdRng::seed_from_u64(seed);
     let palette = dirt_palette(config)?;
-    let mut img = ImageBuffer::from_pixel(tile_width, tile_height, bg);
-    let mut base = ImageBuffer::from_pixel(tile_width, tile_height, Rgba([0, 0, 0, 0]));
-    draw_isometric_ground(&mut base, tile_width, tile_height, palette[0]);
+    let mut img = ImageBuffer::from_pixel(sprite_width, sprite_height, bg);
+    let mut base = ImageBuffer::from_pixel(sprite_width, sprite_height, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut base, sprite_width, sprite_height, palette[0]);
     blit(&mut img, &base);
 
     let splotches = config
         .dirt_splotch_count
-        .unwrap_or((tile_width / 3).max(24));
+        .unwrap_or((sprite_width / 3).max(24));
     for _ in 0..splotches {
         let (cx, cy) = random_tile_point(&base, &mut rng);
         let radius = rng.gen_range(3..=8);
@@ -34,7 +34,7 @@ pub fn render_dirt_tile(
 
     let stones = config
         .dirt_stone_count
-        .unwrap_or((tile_width / 10).max(6));
+        .unwrap_or((sprite_width / 10).max(6));
     for _ in 0..stones {
         let (cx, cy) = random_tile_point(&base, &mut rng);
         let radius = rng.gen_range(1..=3);

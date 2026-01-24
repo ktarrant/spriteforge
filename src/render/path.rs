@@ -12,20 +12,20 @@ use spriteforge_assets::{EDGE_N, EDGE_E, EDGE_W, EDGE_S, uv_from_xy};
 // const BR_EDGE_COL_SHIFT: u8 = 8;
 
 pub fn render_path_tile(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "path" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    render_path_tile_with_mask(tile_width, tile_height, bg, config, 0)
+    render_path_tile_with_mask(sprite_width, sprite_height, bg, config, 0)
 }
 
 pub fn render_path_transition_tile(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
     transition_mask: u8,
@@ -33,12 +33,12 @@ pub fn render_path_transition_tile(
     if config.name != "path_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    render_path_tile_with_mask(tile_width, tile_height, bg, config, transition_mask)
+    render_path_tile_with_mask(sprite_width, sprite_height, bg, config, transition_mask)
 }
 
 fn render_path_tile_with_mask(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
     transition_mask: u8,
@@ -50,8 +50,8 @@ fn render_path_tile_with_mask(
             .unwrap_or_else(|| "#6b6b6b".to_string()),
     )?;
 
-    let mut img = ImageBuffer::from_pixel(tile_width, tile_height, bg);
-    draw_isometric_ground(&mut img, tile_width, tile_height, path);
+    let mut img = ImageBuffer::from_pixel(sprite_width, sprite_height, bg);
+    draw_isometric_ground(&mut img, sprite_width, sprite_height, path);
 
     // Apply path edge transitions
     let width = img.width().max(1) as f32;

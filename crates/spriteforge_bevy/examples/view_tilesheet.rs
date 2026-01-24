@@ -324,13 +324,15 @@ fn setup(
         y: map_height,
     };
     let map_size_copy = map_size;
+    let sprite_width = grass_meta.sprite_width.unwrap_or(256) as f32;
+    let sprite_height = grass_meta.sprite_height.unwrap_or(256) as f32;
     let tile_size = TilemapTileSize {
-        x: grass_meta.tile_size as f32,
-        y: grass_meta.tile_size as f32,
+        x: sprite_width,
+        y: sprite_height,
     };
     let grid_size = TilemapGridSize {
-        x: grass_meta.tile_size as f32,
-        y: (grass_meta.tile_size as f32) * 0.5,
+        x: sprite_width,
+        y: sprite_width * 0.5,
     };
     let water_material = materials.add(WaterFoamMaterial {
         mask_texture: water_mask_texture,
@@ -346,16 +348,10 @@ fn setup(
             foam_settings: Vec4::new(0.018, 2.2, 0.18, 0.0),
         },
     });
-    let hover_outline_texture = images.add(create_outline_image(
-        grass_meta.tile_size,
-        [255, 255, 255, 255],
-        2,
-    ));
-    let selected_outline_texture = images.add(create_outline_image(
-        grass_meta.tile_size,
-        [255, 215, 0, 255],
-        2,
-    ));
+    let hover_outline_texture =
+        images.add(create_outline_image(sprite_width as u32, [255, 255, 255, 255], 2));
+    let selected_outline_texture =
+        images.add(create_outline_image(sprite_width as u32, [255, 215, 0, 255], 2));
     let assets = MapAssets {
         grass_meta,
         dirt_meta,

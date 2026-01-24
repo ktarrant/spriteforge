@@ -45,12 +45,14 @@ spriteforge --out out/tilesheet/grass.png --config configs/tile/grass.config
 
 All tweakable settings live in a JSON config file. Tilesheets are generated from
 the same tile config using `tilesheet_*` fields.
+`sprite_width` and `sprite_height` define the sprite size (the ground diamond uses `sprite_width`).
 
 ```json
 {
   "type": "tile",
   "name": "grass",
-  "size": 256,
+  "sprite_width": 256,
+  "sprite_height": 256,
   "bg": "#2b2f3a",
   "seed": 1234,
   "blade_min": 1,
@@ -60,7 +62,7 @@ the same tile config using `tilesheet_*` fields.
 }
 ```
 
-CLI flags (like `--size` or `--bg`) override values in the config when provided.
+CLI flags (like `--size` or `--bg`) override values in the config when provided (`--size` sets both width and height).
 Use `bg: "transparent"` for a transparent background.
 
 Running with no arguments will build every tile config in `configs/tile`
@@ -84,7 +86,8 @@ Dirt tile example:
 {
   "type": "tile",
   "name": "dirt",
-  "size": 256,
+  "sprite_width": 256,
+  "sprite_height": 256,
   "bg": "#2b2f3a",
   "seed": 4242,
   "dirt_base": "#6b4a2b",
@@ -101,7 +104,8 @@ Transition tile example (grass overlay):
 {
   "type": "tile",
   "name": "grass_transition",
-  "size": 256,
+  "sprite_width": 256,
+  "sprite_height": 256,
   "bg": "transparent",
   "seed": 777,
   "blade_min": 1,
@@ -123,7 +127,8 @@ Water transition tile example (transparent edge cutout):
 {
   "type": "tile",
   "name": "water_transition",
-  "size": 256,
+  "sprite_width": 256,
+  "sprite_height": 256,
   "bg": "transparent",
   "seed": 5555,
   "water_base": "#1c3f66",
@@ -141,7 +146,8 @@ Path transition tile example (transparent edge cutout):
 {
   "type": "tile",
   "name": "path_transition",
-  "size": 256,
+  "sprite_width": 256,
+  "sprite_height": 256,
   "bg": "transparent",
   "seed": 6060,
   "path_base": "#6b6b6b",

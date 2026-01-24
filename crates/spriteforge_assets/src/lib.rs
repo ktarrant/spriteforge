@@ -175,9 +175,8 @@ pub fn edge_weight_for_mask(mask: u8, xf: f32, yf: f32, cutoff: f32, gradient: f
 pub struct TilesheetMetadata {
     pub image: String,
     pub config: String,
-    pub tile_size: u32,
-    pub tile_width: Option<u32>,
-    pub tile_height: Option<u32>,
+    pub sprite_width: Option<u32>,
+    pub sprite_height: Option<u32>,
     pub columns: u32,
     pub rows: u32,
     pub padding: u32,

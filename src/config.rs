@@ -7,9 +7,8 @@ pub const TILESET_CONFIG_DIR: &str = "configs/tile";
 #[derive(Debug, Deserialize, Default)]
 pub struct TileConfig {
     pub name: String,
-    pub size: Option<u32>,
-    pub tile_width: Option<u32>,
-    pub tile_height: Option<u32>,
+    pub sprite_width: Option<u32>,
+    pub sprite_height: Option<u32>,
     pub bg: Option<String>,
     pub seed: Option<u64>,
     pub tilesheet_seed_start: Option<u64>,

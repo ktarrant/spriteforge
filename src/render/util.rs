@@ -18,17 +18,17 @@ pub fn parse_hex_color(hex: &str) -> Result<Rgba<u8>, String> {
 
 pub fn draw_isometric_ground(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     color: Rgba<u8>,
 ) {
-    let width_f = tile_width.saturating_sub(1) as f32;
+    let width_f = sprite_width.saturating_sub(1) as f32;
     if width_f <= 0.0 {
         return;
     }
     let left_x = 0.0;
     let right_x = width_f;
-    let bottom_y = tile_height.saturating_sub(1) as f32;
+    let bottom_y = sprite_height.saturating_sub(1) as f32;
     let height = width_f / 2.0;
     let top_y = bottom_y - height;
     let cx = width_f / 2.0;

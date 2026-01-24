@@ -7,8 +7,8 @@ use crate::render::parse_hex_color;
 use crate::tree::{generate_tree, TreeSettings, Vec3};
 
 pub fn render_tree_tile(
-    tile_width: u32,
-    tile_height: u32,
+    sprite_width: u32,
+    sprite_height: u32,
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
@@ -32,12 +32,12 @@ pub fn render_tree_tile(
             .unwrap_or("#4c7a2f"),
     )?;
 
-    let mut tile = ImageBuffer::from_pixel(tile_width, tile_height, bg);
-    let iso_scale = (tile_width as f32 * 0.35) / settings.crown_radius.max(1.0);
+    let mut tile = ImageBuffer::from_pixel(sprite_width, sprite_height, bg);
+    let iso_scale = (sprite_width as f32 * 0.35) / settings.crown_radius.max(1.0);
     let height_scale = iso_scale;
-    let center_x = tile_width as f32 * 0.5;
+    let center_x = sprite_width as f32 * 0.5;
     let base_y =
-        (tile_height.saturating_sub(1) as f32) - (tile_width.saturating_sub(1) as f32) * 0.25;
+        (sprite_height.saturating_sub(1) as f32) - (sprite_width.saturating_sub(1) as f32) * 0.25;
 
     let project = |point: Vec3| -> (i32, i32) {
         let screen_x = (point.x - point.y) * iso_scale + center_x;
