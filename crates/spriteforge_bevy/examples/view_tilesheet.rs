@@ -179,6 +179,11 @@ struct SelectedTileUi {
 }
 
 #[derive(Resource)]
+struct TimeOfDayUi {
+    text_entity: Entity,
+}
+
+#[derive(Resource)]
 struct MapSeed(u64);
 
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
@@ -470,6 +475,7 @@ fn setup(
         skeleton: spawn.skeleton,
     });
     commands.insert_resource(TileSelectionSettings::new(primary_map));
+    spawn_time_of_day_ui(&mut commands);
     spawn_selected_tile_ui(&mut commands, &asset_server);
 }
 
@@ -909,7 +915,7 @@ fn spawn_selected_tile_ui(commands: &mut Commands, _asset_server: &Res<AssetServ
             style: Style {
                 position_type: PositionType::Absolute,
                 left: Val::Px(20.0),
-                bottom: Val::Px(20.0),
+                bottom: Val::Px(64.0),
                 padding: UiRect::all(Val::Px(12.0)),
                 min_width: Val::Px(220.0),
                 ..Default::default()
@@ -933,6 +939,36 @@ fn spawn_selected_tile_ui(commands: &mut Commands, _asset_server: &Res<AssetServ
         text_entity,
         last_selected: None,
     });
+}
+
+fn spawn_time_of_day_ui(commands: &mut Commands) {
+    let mut text_entity = Entity::PLACEHOLDER;
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                left: Val::Px(20.0),
+                bottom: Val::Px(20.0),
+                padding: UiRect::all(Val::Px(10.0)),
+                min_width: Val::Px(220.0),
+                ..Default::default()
+            },
+            background_color: Color::srgba(0.05, 0.05, 0.05, 0.85).into(),
+            ..Default::default()
+        })
+        .with_children(|parent| {
+            text_entity = parent
+                .spawn(TextBundle::from_section(
+                    "Time: Dawn",
+                    TextStyle {
+                        font_size: 16.0,
+                        color: Color::WHITE,
+                        ..Default::default()
+                    },
+                ))
+                .id();
+        });
+    commands.insert_resource(TimeOfDayUi { text_entity });
 }
 
 fn update_selected_tile_ui(
@@ -1071,6 +1107,8 @@ fn update_time_of_day(
     mut time_of_day: ResMut<TimeOfDay>,
     assets: Res<MapAssets>,
     mut materials: ResMut<Assets<TreeLightMaterial>>,
+    ui: Res<TimeOfDayUi>,
+    mut text_q: Query<&mut Text>,
 ) {
     if !keys.just_pressed(KeyCode::KeyT) {
         return;
@@ -1088,6 +1126,18 @@ fn update_time_of_day(
         if let Some(material) = materials.get_mut(&assets.tree_material) {
             material.params = tree_light_params(next);
         }
+        if let Ok(mut text) = text_q.get_mut(ui.text_entity) {
+            text.sections[0].value = format!("Time: {}", time_of_day_label(next));
+        }
+    }
+}
+
+fn time_of_day_label(time_of_day: TimeOfDay) -> &'static str {
+    match time_of_day {
+        TimeOfDay::Dawn => "Dawn",
+        TimeOfDay::Noon => "Noon",
+        TimeOfDay::Dusk => "Dusk",
+        TimeOfDay::Night => "Night",
     }
 }
 
