@@ -196,16 +196,31 @@ pub fn render_tree_mask_tile(
         }
     }
 
-    for leaf in &model.leaves {
+    for (idx, leaf) in model.leaves.iter().enumerate() {
         let depth_value = leaf.position.x + leaf.position.y;
-        rasterize_normal_sphere(
+        let angle = model
+            .leaf_stems
+            .get(idx)
+            .map(|stem| {
+                let (sx, sy) = projection.project(stem.start);
+                let (ex, ey) = projection.project(stem.end);
+                let dx = ex - sx;
+                let dy = ey - sy;
+                dy.atan2(dx)
+            })
+            .unwrap_or(0.0);
+        let rx = (leaf.size * projection.scale).max(1.0);
+        let ry = (leaf.size * projection.scale * 0.7).max(1.0);
+        rasterize_normal_oval_rotated(
             &projection,
             &mut mask,
             &mut depth,
             sprite_width,
             sprite_height,
             leaf.position,
-            leaf.size,
+            rx,
+            ry,
+            angle,
             depth_value,
             leaf.normal,
         );
@@ -415,6 +430,61 @@ fn rasterize_normal_sphere(
             let dx_screen = x as f32 - cx;
             let dy_screen = y as f32 - cy;
             if dx_screen * dx_screen + dy_screen * dy_screen > screen_radius * screen_radius {
+                continue;
+            }
+            let idx = (y as u32 * sprite_width + x as u32) as usize;
+            if depth_value <= depth[idx] {
+                continue;
+            }
+            depth[idx] = depth_value;
+            mask.put_pixel(x as u32, y as u32, encode_normal(normal));
+        }
+    }
+}
+
+fn rasterize_normal_oval_rotated(
+    projection: &Projection,
+    mask: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    depth: &mut [f32],
+    sprite_width: u32,
+    sprite_height: u32,
+    center: Vec3,
+    rx: f32,
+    ry: f32,
+    angle: f32,
+    depth_value: f32,
+    normal: Vec3,
+) {
+    let (cx, cy) = projection.project(center);
+    let rx = rx.max(1.0);
+    let ry = ry.max(1.0);
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+    let rx2 = rx * rx;
+    let ry2 = ry * ry;
+    let bound_x = ((rx2 * cos_a * cos_a + ry2 * sin_a * sin_a).sqrt()).ceil() as i32;
+    let bound_y = ((rx2 * sin_a * sin_a + ry2 * cos_a * cos_a).sqrt()).ceil() as i32;
+
+    let min_x = (cx - bound_x as f32)
+        .floor()
+        .max(0.0) as i32;
+    let max_x = (cx + bound_x as f32)
+        .ceil()
+        .min(sprite_width.saturating_sub(1) as f32) as i32;
+    let min_y = (cy - bound_y as f32)
+        .floor()
+        .max(0.0) as i32;
+    let max_y = (cy + bound_y as f32)
+        .ceil()
+        .min(sprite_height.saturating_sub(1) as f32) as i32;
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 - cx;
+            let dy = y as f32 - cy;
+            let local_x = dx * cos_a + dy * sin_a;
+            let local_y = -dx * sin_a + dy * cos_a;
+            if (local_x * local_x) / rx2 + (local_y * local_y) / ry2 > 1.0 {
                 continue;
             }
             let idx = (y as u32 * sprite_width + x as u32) as usize;
