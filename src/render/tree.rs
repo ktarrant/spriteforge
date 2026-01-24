@@ -4,7 +4,7 @@ use image::{ImageBuffer, Rgba};
 
 use crate::config::{require_field, TileConfig};
 use crate::render::parse_hex_color;
-use crate::tree::{generate_tree, TreeSettings, Vec3};
+use crate::tree::{generate_tree, TreeModel, TreeSettings, Vec3};
 
 pub fn render_tree_tile(
     sprite_width: u32,
@@ -29,15 +29,9 @@ pub fn render_tree_tile(
     )?)?;
 
     let mut tile = ImageBuffer::from_pixel(sprite_width, sprite_height, bg);
-    let iso_scale = (sprite_width as f32 * 0.35) / settings.crown_radius.max(1.0);
-    let height_scale = iso_scale;
-    let center_x = sprite_width as f32 * 0.5;
-    let base_y =
-        (sprite_height.saturating_sub(1) as f32) - (sprite_width.saturating_sub(1) as f32) * 0.25;
-
+    let projection = build_projection(&model, sprite_width, sprite_height);
     let project = |point: Vec3| -> (i32, i32) {
-        let screen_x = (point.x - point.y) * iso_scale + center_x;
-        let screen_y = (point.x + point.y) * iso_scale * 0.5 - point.z * height_scale + base_y;
+        let (screen_x, screen_y) = projection.project(point);
         (screen_x.round() as i32, screen_y.round() as i32)
     };
 
@@ -51,7 +45,7 @@ pub fn render_tree_tile(
     for segment in &segments {
         let (x0, y0) = project(segment.start);
         let (x1, y1) = project(segment.end);
-        let radius = (segment.radius * iso_scale).round().max(1.0) as i32;
+        let radius = (segment.radius * projection.scale).round().max(1.0) as i32;
         draw_thick_line(&mut tile, x0, y0, x1, y1, radius, trunk_color);
     }
 
@@ -64,7 +58,7 @@ pub fn render_tree_tile(
 
     for leaf in &leaves {
         let (x, y) = project(leaf.position);
-        let radius = (leaf.size * iso_scale).round().max(1.0) as i32;
+        let radius = (leaf.size * projection.scale).round().max(1.0) as i32;
         draw_filled_circle(&mut tile, x, y, radius, leaf_color);
     }
 
@@ -88,6 +82,108 @@ fn tree_settings_from_config(config: &TileConfig) -> Result<TreeSettings, String
         leaf_size: require_field(config.tree_leaf_size, "tree_leaf_size")?,
         max_leaves: require_field(config.tree_leaf_count, "tree_leaf_count")?,
     })
+}
+
+struct Projection {
+    scale: f32,
+    offset_x: f32,
+    offset_y: f32,
+}
+
+impl Projection {
+    fn project(&self, point: Vec3) -> (f32, f32) {
+        let (raw_x, raw_y) = project_raw(point);
+        (
+            raw_x * self.scale + self.offset_x,
+            raw_y * self.scale + self.offset_y,
+        )
+    }
+}
+
+fn build_projection(model: &TreeModel, sprite_width: u32, sprite_height: u32) -> Projection {
+    let mut min_x = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut min_y = f32::MAX;
+    let mut max_y = f32::MIN;
+
+    for segment in &model.segments {
+        expand_bounds(
+            segment.start,
+            segment.radius,
+            &mut min_x,
+            &mut max_x,
+            &mut min_y,
+            &mut max_y,
+        );
+        expand_bounds(
+            segment.end,
+            segment.radius,
+            &mut min_x,
+            &mut max_x,
+            &mut min_y,
+            &mut max_y,
+        );
+    }
+
+    for leaf in &model.leaves {
+        expand_bounds(
+            leaf.position,
+            leaf.size,
+            &mut min_x,
+            &mut max_x,
+            &mut min_y,
+            &mut max_y,
+        );
+    }
+
+    if min_x == f32::MAX || min_y == f32::MAX {
+        min_x = -1.0;
+        max_x = 1.0;
+        min_y = -1.0;
+        max_y = 1.0;
+    }
+
+    let width = (max_x - min_x).max(0.001);
+    let height = (max_y - min_y).max(0.001);
+    let width_f = sprite_width.saturating_sub(1).max(1) as f32;
+    let height_f = sprite_height.saturating_sub(1).max(1) as f32;
+    let pad_x = width_f * 0.05;
+    let pad_top = height_f * 0.05;
+    let pad_bottom = width_f * 0.05;
+    let available_w = (width_f - pad_x * 2.0).max(1.0);
+    let available_h = (height_f - (pad_top + pad_bottom)).max(1.0);
+    let scale = (available_w / width).min(available_h / height);
+
+    let offset_x = width_f * 0.5 - (min_x + max_x) * 0.5 * scale;
+    let offset_y = (height_f - pad_bottom) - max_y * scale;
+
+    Projection {
+        scale,
+        offset_x,
+        offset_y,
+    }
+}
+
+fn expand_bounds(
+    point: Vec3,
+    radius: f32,
+    min_x: &mut f32,
+    max_x: &mut f32,
+    min_y: &mut f32,
+    max_y: &mut f32,
+) {
+    let (raw_x, raw_y) = project_raw(point);
+    let r = radius.max(0.0);
+    *min_x = min_x.min(raw_x - r);
+    *max_x = max_x.max(raw_x + r);
+    *min_y = min_y.min(raw_y - r);
+    *max_y = max_y.max(raw_y + r);
+}
+
+fn project_raw(point: Vec3) -> (f32, f32) {
+    let screen_x = point.x - point.y;
+    let screen_y = (point.x + point.y) * 0.5 - point.z;
+    (screen_x, screen_y)
 }
 
 fn draw_thick_line(
