@@ -230,6 +230,7 @@ fn tree_settings_from_config(config: &TileConfig) -> Result<TreeSettings, String
         base_radius: require_field(config.tree_base_radius, "tree_base_radius")?,
         leaf_size: require_field(config.tree_leaf_size, "tree_leaf_size")?,
         max_leaves: require_field(config.tree_leaf_count, "tree_leaf_count")?,
+        leaf_normal_bias: require_field(config.tree_leaf_normal_bias, "tree_leaf_normal_bias")?,
     })
 }
 

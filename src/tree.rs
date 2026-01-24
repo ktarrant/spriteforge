@@ -94,6 +94,7 @@ pub struct TreeSettings {
     pub base_radius: f32,
     pub leaf_size: f32,
     pub max_leaves: u32,
+    pub leaf_normal_bias: f32,
 }
 
 impl Default for TreeSettings {
@@ -110,6 +111,7 @@ impl Default for TreeSettings {
             base_radius: 0.35,
             leaf_size: 0.55,
             max_leaves: 120,
+            leaf_normal_bias: 0.35,
         }
     }
 }
@@ -261,6 +263,7 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
                     tree_center,
                     &segments,
                     settings.leaf_size,
+                    settings.leaf_normal_bias,
                     &mut rng,
                 );
                 leaf_stems.push(TreeLeafStem {
@@ -286,6 +289,7 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
                     tree_center,
                     &segments,
                     settings.leaf_size,
+                    settings.leaf_normal_bias,
                     &mut rng,
                 );
                 leaf_stems.push(TreeLeafStem {
@@ -310,6 +314,7 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
                     tree_center,
                     &segments,
                     settings.leaf_size,
+                    settings.leaf_normal_bias,
                     &mut rng,
                 );
                 leaf_stems.push(TreeLeafStem {
@@ -387,9 +392,10 @@ fn leaf_stem_for_point(
     tree_center: Vec3,
     segments: &[TreeSegment],
     leaf_size: f32,
+    leaf_normal_bias: f32,
     rng: &mut StdRng,
 ) -> (Vec3, Vec3, Vec3) {
-    let normal = (position - tree_center).normalized();
+    let base_normal = (position - tree_center).normalized();
     let mut parent_dir = Vec3::new(0.0, 0.0, 1.0);
     let mut closest_dist = f32::MAX;
     for segment in segments {
@@ -411,7 +417,8 @@ fn leaf_stem_for_point(
     let stem_length = (leaf_size * 0.9).max(0.15);
     let stem_start = position;
     let stem_end = position + stem_dir * stem_length;
-    (stem_start, stem_end, normal)
+    let blended_normal = (base_normal + stem_dir * leaf_normal_bias).normalized();
+    (stem_start, stem_end, blended_normal)
 }
 
 fn cross(a: Vec3, b: Vec3) -> Vec3 {

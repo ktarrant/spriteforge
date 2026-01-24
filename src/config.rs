@@ -46,6 +46,7 @@ pub struct TileConfig {
     pub tree_base_radius: Option<f32>,
     pub tree_leaf_size: Option<f32>,
     pub tree_leaf_count: Option<u32>,
+    pub tree_leaf_normal_bias: Option<f32>,
     pub tree_trunk_color: Option<String>,
     pub tree_leaf_color: Option<String>,
 }
