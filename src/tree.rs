@@ -1,5 +1,6 @@
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use rand::seq::SliceRandom;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Vec3 {
@@ -214,7 +215,8 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
     let max_height = (settings.trunk_height + settings.crown_height).max(0.001);
     for segment in segments.iter_mut() {
         let t = (segment.end.z / max_height).clamp(0.0, 1.0);
-        segment.radius = settings.base_radius * (1.0 - t).powf(0.7).max(0.15);
+        let taper = (1.0 - t).powf(1.2);
+        segment.radius = (settings.base_radius * taper).max(0.08);
     }
 
     let tree_center = compute_tree_center(&segments, &nodes);
@@ -227,23 +229,40 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         segment.normal = (mid - tree_center).normalized();
     }
 
-    let mut leaves = Vec::with_capacity(initial_attraction_points.len());
-    for point in initial_attraction_points {
-        let mut closest = nodes[0].position;
-        let mut closest_dist = f32::MAX;
-        for node in &nodes {
-            let delta = point - node.position;
-            let dist = delta.length();
-            if dist < closest_dist {
-                closest_dist = dist;
-                closest = node.position;
+    let mut leaves = Vec::new();
+    let target_leaf_count = settings.max_leaves as usize;
+    if target_leaf_count > 0 {
+        if target_leaf_count >= initial_attraction_points.len() {
+            for point in &initial_attraction_points {
+                let closest = nearest_node(&nodes, *point);
+                leaves.push(TreeLeaf {
+                    position: closest,
+                    size: settings.leaf_size,
+                    normal: (closest - tree_center).normalized(),
+                });
+            }
+            while leaves.len() < target_leaf_count {
+                let idx = rng.gen_range(0..nodes.len());
+                let position = nodes[idx].position;
+                leaves.push(TreeLeaf {
+                    position,
+                    size: settings.leaf_size,
+                    normal: (position - tree_center).normalized(),
+                });
+            }
+        } else {
+            let mut indices: Vec<usize> = (0..initial_attraction_points.len()).collect();
+            indices.shuffle(&mut rng);
+            for idx in indices.into_iter().take(target_leaf_count) {
+                let point = initial_attraction_points[idx];
+                let closest = nearest_node(&nodes, point);
+                leaves.push(TreeLeaf {
+                    position: closest,
+                    size: settings.leaf_size,
+                    normal: (closest - tree_center).normalized(),
+                });
             }
         }
-        leaves.push(TreeLeaf {
-            position: closest,
-            size: settings.leaf_size,
-            normal: (closest - tree_center).normalized(),
-        });
     }
 
     TreeModel { segments, leaves }
@@ -281,6 +300,20 @@ fn expand_bounds(point: Vec3, radius: f32, min: &mut Vec3, max: &mut Vec3) {
     max.x = max.x.max(point.x + r);
     max.y = max.y.max(point.y + r);
     max.z = max.z.max(point.z + r);
+}
+
+fn nearest_node(nodes: &[Node], point: Vec3) -> Vec3 {
+    let mut closest = nodes[0].position;
+    let mut closest_dist = f32::MAX;
+    for node in nodes {
+        let delta = point - node.position;
+        let dist = delta.length();
+        if dist < closest_dist {
+            closest_dist = dist;
+            closest = node.position;
+        }
+    }
+    closest
 }
 
 #[cfg(test)]
