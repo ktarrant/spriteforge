@@ -182,6 +182,14 @@ struct SelectedTileUi {
 struct MapSeed(u64);
 
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+enum TimeOfDay {
+    Dawn,
+    Noon,
+    Dusk,
+    Night,
+}
+
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 enum MapKind {
     Terrain,
     Path,
@@ -217,6 +225,7 @@ fn main() {
         .add_plugins(TileSelectionPlugin)
         .add_plugins(MiniMapPlugin)
         .init_resource::<OverlayState>()
+        .insert_resource(TimeOfDay::Dawn)
         .insert_resource(TilesheetPaths {
             grass_image: PathBuf::from(GRASS_IMAGE),
             grass_meta: workspace_root.join(GRASS_META),
@@ -244,6 +253,7 @@ fn main() {
             (
                 regenerate_map_on_space,
                 update_tile_overlays,
+                update_time_of_day,
                 camera_pan,
             ),
         )
@@ -406,12 +416,7 @@ fn setup(
     });
     let tree_material = tree_materials.add(TreeLightMaterial {
         normal_texture: tree_mask_texture,
-        params: TreeLightParams {
-            light_dir: Vec4::new(1.0, 0.0, 0.0, 0.0),
-            ambient_strength: 1.0,
-            diffuse_strength: 3.0,
-            _pad0: Vec2::ZERO,
-        },
+        params: tree_light_params(TimeOfDay::Dawn),
     });
     let hover_outline_texture =
         images.add(create_outline_image(sprite_width as u32, [255, 255, 255, 255], 2));
@@ -1059,6 +1064,60 @@ fn regenerate_map_on_space(
     minimap.map_entity = Some(entities.primary_map);
     minimap.skeleton = spawn.skeleton;
     selection_settings.target_map = Some(entities.primary_map);
+}
+
+fn update_time_of_day(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut time_of_day: ResMut<TimeOfDay>,
+    assets: Res<MapAssets>,
+    mut materials: ResMut<Assets<TreeLightMaterial>>,
+) {
+    if !keys.just_pressed(KeyCode::KeyT) {
+        return;
+    }
+
+    let next = match *time_of_day {
+        TimeOfDay::Dawn => TimeOfDay::Noon,
+        TimeOfDay::Noon => TimeOfDay::Dusk,
+        TimeOfDay::Dusk => TimeOfDay::Night,
+        TimeOfDay::Night => TimeOfDay::Dawn,
+    };
+
+    if *time_of_day != next {
+        *time_of_day = next;
+        if let Some(material) = materials.get_mut(&assets.tree_material) {
+            material.params = tree_light_params(next);
+        }
+    }
+}
+
+fn tree_light_params(time_of_day: TimeOfDay) -> TreeLightParams {
+    match time_of_day {
+        TimeOfDay::Dawn => TreeLightParams {
+            light_dir: Vec4::new(-0.7, -0.1, 0.7, 0.0),
+            ambient_strength: 0.55,
+            diffuse_strength: 0.65,
+            _pad0: Vec2::ZERO,
+        },
+        TimeOfDay::Noon => TreeLightParams {
+            light_dir: Vec4::new(0.0, 0.0, 1.0, 0.0),
+            ambient_strength: 0.6,
+            diffuse_strength: 0.55,
+            _pad0: Vec2::ZERO,
+        },
+        TimeOfDay::Dusk => TreeLightParams {
+            light_dir: Vec4::new(0.7, 0.1, 0.7, 0.0),
+            ambient_strength: 0.55,
+            diffuse_strength: 0.65,
+            _pad0: Vec2::ZERO,
+        },
+        TimeOfDay::Night => TreeLightParams {
+            light_dir: Vec4::new(0.0, 0.0, 1.0, 0.0),
+            ambient_strength: 0.4,
+            diffuse_strength: 0.0,
+            _pad0: Vec2::ZERO,
+        },
+    }
 }
 
 fn create_outline_image(size: u32, color: [u8; 4], thickness: u32) -> Image {
