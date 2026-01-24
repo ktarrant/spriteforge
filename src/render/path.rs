@@ -19,7 +19,7 @@ pub fn render_path_tile(
     if config.name != "path" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    render_path_tile_with_mask(size, bg, config, 0, None)
+    render_path_tile_with_mask(size, bg, config, 0)
 }
 
 pub fn render_path_transition_tile(
@@ -27,12 +27,11 @@ pub fn render_path_transition_tile(
     bg: Rgba<u8>,
     config: &TileConfig,
     transition_mask: u8,
-    overrides: Option<&crate::config::TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "path_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    render_path_tile_with_mask(size, bg, config, transition_mask, overrides)
+    render_path_tile_with_mask(size, bg, config, transition_mask)
 }
 
 fn render_path_tile_with_mask(
@@ -40,7 +39,6 @@ fn render_path_tile_with_mask(
     bg: Rgba<u8>,
     config: &TileConfig,
     transition_mask: u8,
-    overrides: Option<&crate::config::TransitionOverrides>,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     let path = parse_hex_color(
         &config
@@ -48,13 +46,6 @@ fn render_path_tile_with_mask(
             .clone()
             .unwrap_or_else(|| "#6b6b6b".to_string()),
     )?;
-
-    let mut cutoff_rows: u32 = config.path_edge_cutoff.unwrap_or(0);
-    if let Some(overrides) = overrides {
-        if let Some(override_cutoff) = overrides.path_edge_cutoff {
-            cutoff_rows = override_cutoff;
-        }
-    }
 
     let mut img = ImageBuffer::from_pixel(size, size, bg);
     draw_isometric_ground(&mut img, size, path);
@@ -97,12 +88,20 @@ fn render_path_tile_with_mask(
             *pixel = Rgba([0, 0, 0, 0]);
         } else if (transition_mask & EDGE_W != 0) && (brick_col == 0) && (brick_rowi != 1) {
             *pixel = Rgba([0, 0, 0, 0]);
+        } else if (transition_mask & EDGE_N != 0) && (brick_row == brick_count - 2) && (brick_coli == 0 || brick_coli == 3) {
+            *pixel = Rgba([0, 0, 0, 0]);
+        } else if (transition_mask & EDGE_S != 0) && (brick_row == 1) && (brick_coli == 0 || brick_coli == 1) {
+            *pixel = Rgba([0, 0, 0, 0]);
+        } else if (transition_mask & EDGE_E != 0) && (brick_col >= brick_count - 2) && (brick_rowi == 0 || brick_rowi == 3) {
+            *pixel = Rgba([0, 0, 0, 0]);
+        } else if (transition_mask & EDGE_W != 0) && (brick_col == 1) && (brick_rowi == 0 || brick_rowi == 3) {
+            *pixel = Rgba([0, 0, 0, 0]);
         } else if brick_u.fract() < brick_crack && (brick_rowi != 2) {
             *pixel = Rgba([0, 0, 0, alpha_u8]);
         } else if brick_v.fract() < brick_crack && (brick_rowi != 0) {
             *pixel = Rgba([0, 0, 0, alpha_u8]);
         } else if (brick_rowi == 0 || brick_rowi == 3) && brick_coli == 2 {
-            *pixel = Rgba([BRICK_A, BRICK_A, BRICK_A, 255]);;
+            *pixel = Rgba([BRICK_A, BRICK_A, BRICK_A, 255]);
         } else if (brick_rowi == 0 || brick_rowi == 3) && brick_coli == 1 {
             *pixel = Rgba([BRICK_B, BRICK_B, BRICK_B, 255])
         } else if brick_rowi == 1 && brick_coli == 0 {

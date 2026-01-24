@@ -51,9 +51,7 @@ pub fn render_tilesheet(
             entries,
             columns,
             padding,
-            |mask, _seed, overrides| {
-                path::render_path_transition_tile(size, bg, config, mask, overrides)
-            },
+            |mask, _seed, _overrides| path::render_path_transition_tile(size, bg, config, mask),
         );
     }
     let cols = columns.max(1);
@@ -171,7 +169,6 @@ pub fn render_tile(
             bg,
             config,
             transition_mask.unwrap_or(transition::EDGE_N),
-            overrides,
         ),
         "debug_weight" => debug_weight::render_weight_debug_tile(
             size,
