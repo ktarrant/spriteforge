@@ -335,15 +335,15 @@ fn setup(
     let water_material = materials.add(WaterFoamMaterial {
         mask_texture: water_mask_texture,
         params: WaterFoamParams {
-            foam_color: Vec4::new(0.18, 0.0, 0.0, 0.0),
-            foam_settings: Vec4::new(0.012, 3.0, 0.2, 0.0),
+            foam_color: Vec4::new(0.10, 0.18, 0.22, 0.0),
+            foam_settings: Vec4::new(0.018, 2.2, 0.18, 0.0),
         },
     });
     let water_transition_material = materials.add(WaterFoamMaterial {
         mask_texture: water_transition_mask_texture,
         params: WaterFoamParams {
-            foam_color: Vec4::new(0.18, 0.0, 0.0, 0.0),
-            foam_settings: Vec4::new(0.012, 3.0, 0.2, 0.0),
+            foam_color: Vec4::new(0.10, 0.18, 0.22, 0.0),
+            foam_settings: Vec4::new(0.018, 2.2, 0.18, 0.0),
         },
     });
     let hover_outline_texture = images.add(create_outline_image(
