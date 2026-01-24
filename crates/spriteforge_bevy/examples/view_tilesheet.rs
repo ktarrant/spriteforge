@@ -36,6 +36,8 @@ const WATER_TRANSITION_IMAGE: &str = "out/tilesheet/water_transition.png";
 const WATER_TRANSITION_META: &str = "out/tilesheet/water_transition.json";
 const WATER_MASK_IMAGE: &str = "out/tilesheet/water_mask.png";
 const WATER_TRANSITION_MASK_IMAGE: &str = "out/tilesheet/water_transition_mask.png";
+const TREE_IMAGE: &str = "out/tilesheet/tree.png";
+const TREE_META: &str = "out/tilesheet/tree.json";
 const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const PATH_MAP_WIDTH: u32 = 64;
@@ -64,6 +66,8 @@ struct TilesheetPaths {
     water_transition_meta: PathBuf,
     water_mask_image: PathBuf,
     water_transition_mask_image: PathBuf,
+    tree_image: PathBuf,
+    tree_meta: PathBuf,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
@@ -97,6 +101,7 @@ struct MapAssets {
     transition_meta: TilesheetMetadata,
     water_meta: TilesheetMetadata,
     water_transition_meta: TilesheetMetadata,
+    tree_meta: TilesheetMetadata,
     grass_texture: Handle<Image>,
     dirt_texture: Handle<Image>,
     path_texture: Handle<Image>,
@@ -104,12 +109,14 @@ struct MapAssets {
     transition_texture: Handle<Image>,
     water_texture: Handle<Image>,
     water_transition_texture: Handle<Image>,
+    tree_texture: Handle<Image>,
     water_material: Handle<WaterFoamMaterial>,
     water_transition_material: Handle<WaterFoamMaterial>,
     hover_outline_texture: Handle<Image>,
     selected_outline_texture: Handle<Image>,
     map_size: TilemapSize,
     tile_size: TilemapTileSize,
+    tree_tile_size: TilemapTileSize,
     grid_size: TilemapGridSize,
 }
 
@@ -121,6 +128,7 @@ struct MapEntities {
     transition_map: Entity,
     path_transition_map: Entity,
     water_transition_map: Entity,
+    tree_map: Entity,
     hover_map: Entity,
     selected_map: Entity,
 }
@@ -199,6 +207,8 @@ fn main() {
             water_transition_meta: workspace_root.join(WATER_TRANSITION_META),
             water_mask_image: PathBuf::from(WATER_MASK_IMAGE),
             water_transition_mask_image: PathBuf::from(WATER_TRANSITION_MASK_IMAGE),
+            tree_image: PathBuf::from(TREE_IMAGE),
+            tree_meta: workspace_root.join(TREE_META),
         })
         .add_systems(Startup, setup)
         .add_systems(
@@ -295,6 +305,13 @@ fn setup(
             return;
         }
     };
+    let tree_meta = match load_tilesheet_metadata(&paths.tree_meta) {
+        Ok(data) => data,
+        Err(err) => {
+            eprintln!("Failed to load tree metadata: {err}");
+            return;
+        }
+    };
 
     let grass_texture: Handle<Image> =
         asset_server.load(paths.grass_image.to_string_lossy().to_string());
@@ -310,6 +327,8 @@ fn setup(
         asset_server.load(paths.water_image.to_string_lossy().to_string());
     let water_transition_texture: Handle<Image> =
         asset_server.load(paths.water_transition_image.to_string_lossy().to_string());
+    let tree_texture: Handle<Image> =
+        asset_server.load(paths.tree_image.to_string_lossy().to_string());
     let water_mask_texture: Handle<Image> =
         asset_server.load(paths.water_mask_image.to_string_lossy().to_string());
     let water_transition_mask_texture: Handle<Image> =
@@ -329,6 +348,12 @@ fn setup(
     let tile_size = TilemapTileSize {
         x: sprite_width,
         y: sprite_height,
+    };
+    let tree_sprite_width = tree_meta.sprite_width.unwrap_or(256) as f32;
+    let tree_sprite_height = tree_meta.sprite_height.unwrap_or(256) as f32;
+    let tree_tile_size = TilemapTileSize {
+        x: tree_sprite_width,
+        y: tree_sprite_height,
     };
     let grid_size = TilemapGridSize {
         x: sprite_width,
@@ -360,6 +385,7 @@ fn setup(
         transition_meta,
         water_meta,
         water_transition_meta,
+        tree_meta,
         grass_texture,
         dirt_texture,
         path_texture,
@@ -367,12 +393,14 @@ fn setup(
         transition_texture,
         water_texture,
         water_transition_texture,
+        tree_texture,
         water_material: water_material,
         water_transition_material: water_transition_material,
         hover_outline_texture,
         selected_outline_texture,
         map_size,
         tile_size,
+        tree_tile_size,
         grid_size,
     };
     let minimap_grid_size = assets.grid_size;
@@ -434,6 +462,7 @@ fn spawn_map(
         &assets.water_meta,
         &assets.water_transition_meta,
         &assets.transition_meta,
+        &assets.tree_meta,
         &mut rng,
     );
     let mut grass_storage = TileStorage::empty(assets.map_size);
@@ -450,6 +479,8 @@ fn spawn_map(
     let water_entity = commands.spawn_empty().id();
     let mut water_transition_storage = TileStorage::empty(assets.map_size);
     let water_transition_entity = commands.spawn_empty().id();
+    let mut tree_storage = TileStorage::empty(assets.map_size);
+    let tree_entity = commands.spawn_empty().id();
     let hover_storage = TileStorage::empty(assets.map_size);
     let hover_entity = commands.spawn_empty().id();
     let selected_storage = TileStorage::empty(assets.map_size);
@@ -542,6 +573,18 @@ fn spawn_map(
                     })
                     .id();
                 water_transition_storage.set(&tile_pos, tile_entity);
+                tiles.push(tile_entity);
+            }
+            if let Some(index) = layers.trees[idx] {
+                let tile_entity = commands
+                    .spawn(TileBundle {
+                        position: tile_pos,
+                        tilemap_id: TilemapId(tree_entity),
+                        texture_index: TileTextureIndex(index),
+                        ..Default::default()
+                    })
+                    .id();
+                tree_storage.set(&tile_pos, tile_entity);
                 tiles.push(tile_entity);
             }
         }
@@ -649,6 +692,20 @@ fn spawn_map(
         ..Default::default()
     });
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
+    let mut tree_transform =
+        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
+    tree_transform.translation.z = 1.6;
+    commands.entity(tree_entity).insert(TilemapBundle {
+        grid_size: assets.grid_size,
+        size: assets.map_size,
+        storage: tree_storage,
+        texture: TilemapTexture::Single(assets.tree_texture.clone()),
+        tile_size: assets.tree_tile_size,
+        map_type,
+        transform: tree_transform,
+        ..Default::default()
+    });
+    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
     let mut hover_transform =
         get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     hover_transform.translation.z = 2.0;
@@ -687,6 +744,7 @@ fn spawn_map(
             transition_entity,
             water_entity,
             water_transition_entity,
+            tree_entity,
             hover_entity,
             selected_entity,
         ],
@@ -695,6 +753,7 @@ fn spawn_map(
         transition_map: transition_entity,
         path_transition_map: path_transition_entity,
         water_transition_map: water_transition_entity,
+        tree_map: tree_entity,
         hover_map: hover_entity,
         selected_map: selected_entity,
         },

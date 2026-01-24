@@ -31,6 +31,7 @@ pub struct RenderTileLayers {
     pub water: Vec<Option<u32>>,
     pub water_transition: Vec<Option<u32>>,
     pub transition: Vec<Option<u32>>,
+    pub trees: Vec<Option<u32>>,
 }
 
 pub mod map_generators;
@@ -46,6 +47,7 @@ pub fn build_render_layers<R: rand::Rng>(
     water_meta: &TilesheetMetadata,
     water_transition_meta: &TilesheetMetadata,
     transition_meta: &TilesheetMetadata,
+    tree_meta: &TilesheetMetadata,
     rng: &mut R,
 ) -> RenderTileLayers {
     let mut grass = vec![None; base_tiles.len()];
@@ -55,10 +57,12 @@ pub fn build_render_layers<R: rand::Rng>(
     let mut water = vec![None; base_tiles.len()];
     let mut water_transition = vec![None; base_tiles.len()];
     let mut transition = vec![None; base_tiles.len()];
+    let mut trees = vec![None; base_tiles.len()];
 
     let transition_lookup = build_transition_lookup(transition_meta);
     let path_transition_lookup = build_transition_lookup(path_transition_meta);
     let water_transition_lookup = build_transition_lookup(water_transition_meta);
+    let tree_density = 0.08;
 
     for y in 0..height {
         for x in 0..width {
@@ -75,6 +79,10 @@ pub fn build_render_layers<R: rand::Rng>(
                     } else {
                         let index = rng.gen_range(0..grass_meta.tile_count) as u32;
                         grass[idx] = Some(index);
+                        if rng.gen_bool(tree_density) {
+                            let tree_index = rng.gen_range(0..tree_meta.tile_count) as u32;
+                            trees[idx] = Some(tree_index);
+                        }
                     }
                 }
                 BaseTile::Water => {
@@ -130,6 +138,7 @@ pub fn build_render_layers<R: rand::Rng>(
         water,
         water_transition,
         transition,
+        trees,
     }
 }
 
