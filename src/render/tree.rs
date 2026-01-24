@@ -54,12 +54,24 @@ pub fn render_tree_tile(
             radius: stem.radius,
         });
     }
-    for leaf in &model.leaves {
+    for (idx, leaf) in model.leaves.iter().enumerate() {
         let depth = leaf.position.x + leaf.position.y;
+        let angle = model
+            .leaf_stems
+            .get(idx)
+            .map(|stem| {
+                let (sx, sy) = project(stem.start);
+                let (ex, ey) = project(stem.end);
+                let dx = (ex - sx) as f32;
+                let dy = (ey - sy) as f32;
+                dy.atan2(dx)
+            })
+            .unwrap_or(0.0);
         draw_items.push(DrawItem::Leaf {
             depth,
             position: leaf.position,
             radius: leaf.size,
+            angle,
         });
     }
 
@@ -80,12 +92,13 @@ pub fn render_tree_tile(
             DrawItem::Leaf {
                 position,
                 radius,
+                angle,
                 ..
             } => {
                 let (x, y) = project(position);
                 let rx = (radius * projection.scale).round().max(1.0) as i32;
                 let ry = (radius * projection.scale * 0.7).round().max(1.0) as i32;
-                draw_filled_oval(&mut tile, x, y, rx, ry, leaf_color);
+                draw_filled_oval_rotated(&mut tile, x, y, rx, ry, angle, leaf_color);
             }
             DrawItem::LeafStem {
                 start,
@@ -237,6 +250,7 @@ enum DrawItem {
         depth: f32,
         position: Vec3,
         radius: f32,
+        angle: f32,
     },
     LeafStem {
         depth: f32,
@@ -474,23 +488,31 @@ fn draw_filled_circle(
     }
 }
 
-fn draw_filled_oval(
+fn draw_filled_oval_rotated(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     cx: i32,
     cy: i32,
     rx: i32,
     ry: i32,
+    angle: f32,
     color: Rgba<u8>,
 ) {
     let rx = rx.max(1);
     let ry = ry.max(1);
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
     let rx2 = (rx * rx) as f32;
     let ry2 = (ry * ry) as f32;
-    for y in -ry..=ry {
-        for x in -rx..=rx {
+    let bound_x = ((rx2 * cos_a * cos_a + ry2 * sin_a * sin_a).sqrt()).ceil() as i32;
+    let bound_y = ((rx2 * sin_a * sin_a + ry2 * cos_a * cos_a).sqrt()).ceil() as i32;
+
+    for y in -bound_y..=bound_y {
+        for x in -bound_x..=bound_x {
             let dx = x as f32;
             let dy = y as f32;
-            if (dx * dx) / rx2 + (dy * dy) / ry2 <= 1.0 {
+            let local_x = dx * cos_a + dy * sin_a;
+            let local_y = -dx * sin_a + dy * cos_a;
+            if (local_x * local_x) / rx2 + (local_y * local_y) / ry2 <= 1.0 {
                 put_pixel_safe(img, cx + x, cy + y, color);
             }
         }
