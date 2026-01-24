@@ -229,10 +229,20 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
 
     let mut leaves = Vec::with_capacity(initial_attraction_points.len());
     for point in initial_attraction_points {
+        let mut closest = nodes[0].position;
+        let mut closest_dist = f32::MAX;
+        for node in &nodes {
+            let delta = point - node.position;
+            let dist = delta.length();
+            if dist < closest_dist {
+                closest_dist = dist;
+                closest = node.position;
+            }
+        }
         leaves.push(TreeLeaf {
-            position: point,
+            position: closest,
             size: settings.leaf_size,
-            normal: (point - tree_center).normalized(),
+            normal: (closest - tree_center).normalized(),
         });
     }
 
