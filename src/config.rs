@@ -34,6 +34,19 @@ pub struct TileConfig {
     pub transition_density: Option<f32>,
     pub transition_bias: Option<f32>,
     pub transition_falloff: Option<f32>,
+    pub tree_trunk_height: Option<f32>,
+    pub tree_crown_radius: Option<f32>,
+    pub tree_crown_height: Option<f32>,
+    pub tree_attraction_points: Option<u32>,
+    pub tree_segment_length: Option<f32>,
+    pub tree_influence_distance: Option<f32>,
+    pub tree_kill_distance: Option<f32>,
+    pub tree_max_iterations: Option<u32>,
+    pub tree_base_radius: Option<f32>,
+    pub tree_leaf_size: Option<f32>,
+    pub tree_leaf_count: Option<u32>,
+    pub tree_trunk_color: Option<String>,
+    pub tree_leaf_color: Option<String>,
 }
 
 #[derive(Debug, Clone)]

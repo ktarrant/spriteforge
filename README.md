@@ -13,6 +13,7 @@ cargo run -- --out out/tilesheet/water_transition.png --config configs/tile/wate
 cargo run -- --out out/tilesheet/path.png --config configs/tile/path.config
 cargo run -- --out out/tilesheet/path_transition.png --config configs/tile/path_transition.config
 cargo run -- --out out/tilesheet/dirt.png --config configs/tile/dirt.config
+cargo run -- --out out/tilesheet/tree.png --config configs/tile/tree.config
 ```
 
 Build all tilesheets (no args):
@@ -66,6 +67,11 @@ Running with no arguments will build every tile config in `configs/tile`
 and write outputs to `out/tilesheet/<config-name>.png`.
 Tilesheet builds also write metadata JSON next to the image (same name, `.json`).
 Water tilesheets (including water transitions) also emit a mask PNG named `<config-name>_mask.png`.
+
+Tree tilesheet (single config):
+```bash
+cargo run -- --out out/tilesheet/tree.png --config configs/tile/tree.config
+```
 
 Debug weight visualization (manual run only):
 ```bash

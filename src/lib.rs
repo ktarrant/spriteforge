@@ -10,6 +10,7 @@ use spriteforge_assets::{TileMetadata, TilesheetMetadata};
 
 mod config;
 mod render;
+mod tree;
 
 #[derive(Parser, Debug)]
 #[command(name = "spriteforge", about = "Procedural sprite generator")]

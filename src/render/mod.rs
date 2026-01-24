@@ -6,6 +6,7 @@ mod debug_weight;
 mod dirt;
 mod grass;
 mod path;
+mod tree;
 pub mod transition;
 mod util;
 mod water;
@@ -170,6 +171,7 @@ pub fn render_tile(
             config,
             transition_mask.unwrap_or(transition::EDGE_N),
         ),
+        "tree" => tree::render_tree_tile(size, bg, seed, config),
         "debug_weight" => debug_weight::render_weight_debug_tile(
             size,
             bg,
