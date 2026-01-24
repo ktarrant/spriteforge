@@ -1145,25 +1145,25 @@ fn tree_light_params(time_of_day: TimeOfDay) -> TreeLightParams {
     match time_of_day {
         TimeOfDay::Dawn => TreeLightParams {
             light_dir: Vec4::new(-0.707, 0.707, 0.0, 0.0),
-            ambient_strength: 0.55,
+            ambient_strength: 0.35,
             diffuse_strength: 0.65,
             _pad0: Vec2::ZERO,
         },
         TimeOfDay::Noon => TreeLightParams {
             light_dir: Vec4::new(0.0, 0.0, 1.0, 0.0),
-            ambient_strength: 0.6,
+            ambient_strength: 0.4,
             diffuse_strength: 0.55,
             _pad0: Vec2::ZERO,
         },
         TimeOfDay::Dusk => TreeLightParams {
             light_dir: Vec4::new(0.707, -0.707, 0.0, 0.0),
-            ambient_strength: 0.55,
+            ambient_strength: 0.35,
             diffuse_strength: 0.65,
             _pad0: Vec2::ZERO,
         },
         TimeOfDay::Night => TreeLightParams {
             light_dir: Vec4::new(0.0, 0.0, 1.0, 0.0),
-            ambient_strength: 0.4,
+            ambient_strength: 0.2,
             diffuse_strength: 0.0,
             _pad0: Vec2::ZERO,
         },

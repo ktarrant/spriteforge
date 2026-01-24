@@ -29,6 +29,6 @@ fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
     let normal = decode_normal(normal_rgb);
     let light_dir = normalize(params.light_dir.xyz);
     let ndotl = max(dot(normal, light_dir), 0.0);
-    let gray = clamp(ndotl, 0.0, 1.0);
+    let gray = clamp(params.ambient_strength + ndotl * params.diffuse_strength, 0.0, 1.0);
     return vec4<f32>(vec3<f32>(gray), base.a);
 }
