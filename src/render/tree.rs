@@ -45,6 +45,15 @@ pub fn render_tree_tile(
             radius: segment.radius,
         });
     }
+    for stem in &model.leaf_stems {
+        let depth = (stem.start.x + stem.start.y + stem.end.x + stem.end.y) * 0.5;
+        draw_items.push(DrawItem::LeafStem {
+            depth,
+            start: stem.start,
+            end: stem.end,
+            radius: stem.radius,
+        });
+    }
     for leaf in &model.leaves {
         let depth = leaf.position.x + leaf.position.y;
         draw_items.push(DrawItem::Leaf {
@@ -74,8 +83,20 @@ pub fn render_tree_tile(
                 ..
             } => {
                 let (x, y) = project(position);
+                let rx = (radius * projection.scale).round().max(1.0) as i32;
+                let ry = (radius * projection.scale * 0.7).round().max(1.0) as i32;
+                draw_filled_oval(&mut tile, x, y, rx, ry, leaf_color);
+            }
+            DrawItem::LeafStem {
+                start,
+                end,
+                radius,
+                ..
+            } => {
+                let (x0, y0) = project(start);
+                let (x1, y1) = project(end);
                 let radius = (radius * projection.scale).round().max(1.0) as i32;
-                draw_filled_circle(&mut tile, x, y, radius, leaf_color);
+                draw_thick_line(&mut tile, x0, y0, x1, y1, radius, trunk_color);
             }
         }
     }
@@ -127,6 +148,37 @@ pub fn render_tree_mask_tile(
                 segment.radius,
                 depth_value,
                 segment.normal,
+            );
+        }
+    }
+
+    for stem in &model.leaf_stems {
+        let dir = Vec3::new(
+            stem.end.x - stem.start.x,
+            stem.end.y - stem.start.y,
+            stem.end.z - stem.start.z,
+        );
+        let length = dir.length().max(0.001);
+        let step = (stem.radius * 0.75).max(0.05);
+        let steps = (length / step).ceil().max(1.0) as i32;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let point = Vec3::new(
+                stem.start.x + dir.x * t,
+                stem.start.y + dir.y * t,
+                stem.start.z + dir.z * t,
+            );
+            let depth_value = point.x + point.y;
+            rasterize_normal_sphere(
+                &projection,
+                &mut mask,
+                &mut depth,
+                sprite_width,
+                sprite_height,
+                point,
+                stem.radius,
+                depth_value,
+                stem.normal,
             );
         }
     }
@@ -186,6 +238,12 @@ enum DrawItem {
         position: Vec3,
         radius: f32,
     },
+    LeafStem {
+        depth: f32,
+        start: Vec3,
+        end: Vec3,
+        radius: f32,
+    },
 }
 
 impl DrawItem {
@@ -193,6 +251,7 @@ impl DrawItem {
         match self {
             DrawItem::Segment { depth, .. } => *depth,
             DrawItem::Leaf { depth, .. } => *depth,
+            DrawItem::LeafStem { depth, .. } => *depth,
         }
     }
 }
@@ -236,6 +295,24 @@ fn build_projection(model: &TreeModel, sprite_width: u32, sprite_height: u32) ->
         expand_bounds(
             leaf.position,
             leaf.size,
+            &mut min_x,
+            &mut max_x,
+            &mut min_y,
+            &mut max_y,
+        );
+    }
+    for stem in &model.leaf_stems {
+        expand_bounds(
+            stem.start,
+            stem.radius,
+            &mut min_x,
+            &mut max_x,
+            &mut min_y,
+            &mut max_y,
+        );
+        expand_bounds(
+            stem.end,
+            stem.radius,
             &mut min_x,
             &mut max_x,
             &mut min_y,
@@ -391,6 +468,29 @@ fn draw_filled_circle(
     for y in -r..=r {
         for x in -r..=r {
             if x * x + y * y <= r2 {
+                put_pixel_safe(img, cx + x, cy + y, color);
+            }
+        }
+    }
+}
+
+fn draw_filled_oval(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    cx: i32,
+    cy: i32,
+    rx: i32,
+    ry: i32,
+    color: Rgba<u8>,
+) {
+    let rx = rx.max(1);
+    let ry = ry.max(1);
+    let rx2 = (rx * rx) as f32;
+    let ry2 = (ry * ry) as f32;
+    for y in -ry..=ry {
+        for x in -rx..=rx {
+            let dx = x as f32;
+            let dy = y as f32;
+            if (dx * dx) / rx2 + (dy * dy) / ry2 <= 1.0 {
                 put_pixel_safe(img, cx + x, cy + y, color);
             }
         }

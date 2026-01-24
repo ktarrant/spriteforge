@@ -60,6 +60,14 @@ pub struct TreeSegment {
 }
 
 #[derive(Debug, Clone)]
+pub struct TreeLeafStem {
+    pub start: Vec3,
+    pub end: Vec3,
+    pub radius: f32,
+    pub normal: Vec3,
+}
+
+#[derive(Debug, Clone)]
 pub struct TreeLeaf {
     pub position: Vec3,
     pub size: f32,
@@ -69,6 +77,7 @@ pub struct TreeLeaf {
 #[derive(Debug, Clone, Default)]
 pub struct TreeModel {
     pub segments: Vec<TreeSegment>,
+    pub leaf_stems: Vec<TreeLeafStem>,
     pub leaves: Vec<TreeLeaf>,
 }
 
@@ -229,25 +238,52 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         segment.normal = (mid - tree_center).normalized();
     }
 
+    let mut leaf_stems = Vec::new();
     let mut leaves = Vec::new();
     let target_leaf_count = settings.max_leaves as usize;
     if target_leaf_count > 0 {
         if target_leaf_count >= initial_attraction_points.len() {
             for point in &initial_attraction_points {
                 let closest = nearest_node(&nodes, *point);
+                let (stem_start, stem_end, normal) = leaf_stem_for_point(
+                    closest,
+                    tree_center,
+                    &segments,
+                    settings.leaf_size,
+                    &mut rng,
+                );
+                leaf_stems.push(TreeLeafStem {
+                    start: stem_start,
+                    end: stem_end,
+                    radius: settings.leaf_size * 0.15,
+                    normal,
+                });
                 leaves.push(TreeLeaf {
-                    position: closest,
+                    position: stem_end,
                     size: settings.leaf_size,
-                    normal: (closest - tree_center).normalized(),
+                    normal,
                 });
             }
             while leaves.len() < target_leaf_count {
                 let idx = rng.gen_range(0..nodes.len());
                 let position = nodes[idx].position;
-                leaves.push(TreeLeaf {
+                let (stem_start, stem_end, normal) = leaf_stem_for_point(
                     position,
+                    tree_center,
+                    &segments,
+                    settings.leaf_size,
+                    &mut rng,
+                );
+                leaf_stems.push(TreeLeafStem {
+                    start: stem_start,
+                    end: stem_end,
+                    radius: settings.leaf_size * 0.15,
+                    normal,
+                });
+                leaves.push(TreeLeaf {
+                    position: stem_end,
                     size: settings.leaf_size,
-                    normal: (position - tree_center).normalized(),
+                    normal,
                 });
             }
         } else {
@@ -256,16 +292,33 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
             for idx in indices.into_iter().take(target_leaf_count) {
                 let point = initial_attraction_points[idx];
                 let closest = nearest_node(&nodes, point);
+                let (stem_start, stem_end, normal) = leaf_stem_for_point(
+                    closest,
+                    tree_center,
+                    &segments,
+                    settings.leaf_size,
+                    &mut rng,
+                );
+                leaf_stems.push(TreeLeafStem {
+                    start: stem_start,
+                    end: stem_end,
+                    radius: settings.leaf_size * 0.15,
+                    normal,
+                });
                 leaves.push(TreeLeaf {
-                    position: closest,
+                    position: stem_end,
                     size: settings.leaf_size,
-                    normal: (closest - tree_center).normalized(),
+                    normal,
                 });
             }
         }
     }
 
-    TreeModel { segments, leaves }
+    TreeModel {
+        segments,
+        leaf_stems,
+        leaves,
+    }
 }
 
 fn compute_tree_center(segments: &[TreeSegment], nodes: &[Node]) -> Vec3 {
@@ -314,6 +367,46 @@ fn nearest_node(nodes: &[Node], point: Vec3) -> Vec3 {
         }
     }
     closest
+}
+
+fn leaf_stem_for_point(
+    position: Vec3,
+    tree_center: Vec3,
+    segments: &[TreeSegment],
+    leaf_size: f32,
+    rng: &mut StdRng,
+) -> (Vec3, Vec3, Vec3) {
+    let normal = (position - tree_center).normalized();
+    let mut parent_dir = Vec3::new(0.0, 0.0, 1.0);
+    let mut closest_dist = f32::MAX;
+    for segment in segments {
+        let delta = position - segment.end;
+        let dist = delta.length();
+        if dist < closest_dist {
+            closest_dist = dist;
+            parent_dir = (segment.end - segment.start).normalized();
+        }
+    }
+    let mut axis_a = cross(parent_dir, Vec3::new(0.0, 0.0, 1.0));
+    if axis_a.length() <= f32::EPSILON {
+        axis_a = cross(parent_dir, Vec3::new(1.0, 0.0, 0.0));
+    }
+    axis_a = axis_a.normalized();
+    let axis_b = cross(parent_dir, axis_a).normalized();
+    let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+    let stem_dir = (axis_a * angle.cos() + axis_b * angle.sin()).normalized();
+    let stem_length = (leaf_size * 0.9).max(0.15);
+    let stem_start = position;
+    let stem_end = position + stem_dir * stem_length;
+    (stem_start, stem_end, normal)
+}
+
+fn cross(a: Vec3, b: Vec3) -> Vec3 {
+    Vec3::new(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x,
+    )
 }
 
 #[cfg(test)]
