@@ -57,6 +57,7 @@ pub struct TreeSegment {
     pub end: Vec3,
     pub radius: f32,
     pub normal: Vec3,
+    pub depth: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -120,6 +121,9 @@ impl Default for TreeSettings {
 struct Node {
     position: Vec3,
     children: u32,
+    #[allow(dead_code)]
+    parent: Option<usize>,
+    depth: u32,
 }
 
 pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
@@ -150,12 +154,17 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
     nodes.push(Node {
         position: Vec3::new(0.0, 0.0, 0.0),
         children: 1,
+        parent: None,
+        depth: 0,
     });
     for step in 1..=trunk_steps {
         let z = (step as f32 * trunk_step).min(settings.trunk_height);
+        let depth = nodes[prev_index].depth + 1;
         nodes.push(Node {
             position: Vec3::new(0.0, 0.0, z),
             children: if step == trunk_steps { 0 } else { 1 },
+            parent: Some(prev_index),
+            depth,
         });
         let next_index = nodes.len() - 1;
         segments.push(TreeSegment {
@@ -163,6 +172,7 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
             end: nodes[next_index].position,
             radius: settings.base_radius,
             normal: Vec3::default(),
+            depth,
         });
         prev_index = next_index;
     }
@@ -217,22 +227,31 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
 
         for (parent_idx, position) in new_nodes {
             nodes[parent_idx].children += 1;
+            let depth = nodes[parent_idx].depth + 1;
             nodes.push(Node {
                 position,
                 children: 0,
+                parent: Some(parent_idx),
+                depth,
             });
             segments.push(TreeSegment {
                 start: nodes[parent_idx].position,
                 end: position,
                 radius: 0.0,
                 normal: Vec3::default(),
+                depth,
             });
         }
     }
 
-    let max_height = (settings.trunk_height + settings.crown_height).max(0.001);
+    let max_depth = nodes
+        .iter()
+        .map(|node| node.depth)
+        .max()
+        .unwrap_or(1)
+        .max(1) as f32;
     for segment in segments.iter_mut() {
-        let t = (segment.end.z / max_height).clamp(0.0, 1.0);
+        let t = (segment.depth as f32 / max_depth).clamp(0.0, 1.0);
         let height_factor = 1.0 - t;
         let taper = height_factor.powf(1.8);
         let base_scale = 1.0 + 0.5 * height_factor;
