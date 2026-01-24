@@ -149,7 +149,10 @@ fn build_from_tile_config(
         columns,
         padding,
     )?;
-    if tile_config.name == "water" || tile_config.name == "water_transition" {
+    if tile_config.name == "water"
+        || tile_config.name == "water_transition"
+        || tile_config.name == "tree"
+    {
         let mask = render_tilesheet_mask(
             sprite_width,
             sprite_height,

@@ -138,6 +138,7 @@ pub fn render_tilesheet_mask(
         let mask_tile = render_tile_mask(
             sprite_width,
             sprite_height,
+            entry.seed,
             config,
             entry.transition_mask,
             Some(&entry.overrides),
@@ -155,6 +156,7 @@ pub fn render_tilesheet_mask(
 fn render_tile_mask(
     sprite_width: u32,
     sprite_height: u32,
+    seed: u64,
     config: &TileConfig,
     transition_mask: Option<u8>,
     overrides: Option<&TransitionOverrides>,
@@ -168,6 +170,7 @@ fn render_tile_mask(
             transition_mask.unwrap_or(transition::EDGE_N),
             overrides,
         ),
+        "tree" => tree::render_tree_mask_tile(sprite_width, sprite_height, seed, config),
         other => Err(format!("No mask renderer for tile name: {other}")),
     }
 }

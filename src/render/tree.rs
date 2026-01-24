@@ -83,6 +83,88 @@ pub fn render_tree_tile(
     Ok(tile)
 }
 
+pub fn render_tree_mask_tile(
+    sprite_width: u32,
+    sprite_height: u32,
+    seed: u64,
+    config: &TileConfig,
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
+    if config.name != "tree" {
+        return Err(format!("Unknown tile name: {}", config.name));
+    }
+
+    let settings = tree_settings_from_config(config)?;
+    let model = generate_tree(seed, &settings);
+    let projection = build_projection(&model, sprite_width, sprite_height);
+    let (sphere_center, sphere_radius) = compute_tree_sphere(&model);
+    let (center_x, center_y) = projection.project(sphere_center);
+
+    let mut mask = ImageBuffer::from_pixel(sprite_width, sprite_height, Rgba([0, 0, 0, 0]));
+    let mut depth = vec![f32::NEG_INFINITY; (sprite_width * sprite_height) as usize];
+
+    for segment in &model.segments {
+        let dir = Vec3::new(
+            segment.end.x - segment.start.x,
+            segment.end.y - segment.start.y,
+            segment.end.z - segment.start.z,
+        );
+        let length = dir.length().max(0.001);
+        let step = (segment.radius * 0.75).max(0.05);
+        let steps = (length / step).ceil().max(1.0) as i32;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let point = Vec3::new(
+                segment.start.x + dir.x * t,
+                segment.start.y + dir.y * t,
+                segment.start.z + dir.z * t,
+            );
+            let depth_value = point.x + point.y;
+            rasterize_depth_sphere(
+                &projection,
+                &mut depth,
+                sprite_width,
+                sprite_height,
+                point,
+                segment.radius,
+                depth_value,
+            );
+        }
+    }
+
+    for leaf in &model.leaves {
+        let depth_value = leaf.position.x + leaf.position.y;
+        rasterize_depth_sphere(
+            &projection,
+            &mut depth,
+            sprite_width,
+            sprite_height,
+            leaf.position,
+            leaf.size,
+            depth_value,
+        );
+    }
+
+    let radius = sphere_radius.max(0.001);
+    for y in 0..sprite_height {
+        for x in 0..sprite_width {
+            let idx = (y * sprite_width + x) as usize;
+            if !depth[idx].is_finite() {
+                continue;
+            }
+            let dx_screen = x as f32 - center_x;
+            let dy_screen = y as f32 - center_y;
+            let (dx_world, dy_world) =
+                screen_to_world_delta(dx_screen, dy_screen, projection.scale);
+            let dist2 = dx_world * dx_world + dy_world * dy_world;
+            let dz_world = (radius * radius - dist2).max(0.0).sqrt();
+            let normal = Vec3::new(dx_world, dy_world, dz_world).normalized();
+            mask.put_pixel(x, y, encode_normal(normal));
+        }
+    }
+
+    Ok(mask)
+}
+
 fn tree_settings_from_config(config: &TileConfig) -> Result<TreeSettings, String> {
     Ok(TreeSettings {
         trunk_height: require_field(config.tree_trunk_height, "tree_trunk_height")?,
@@ -225,6 +307,124 @@ fn project_raw(point: Vec3) -> (f32, f32) {
     let screen_x = point.x - point.y;
     let screen_y = (point.x + point.y) * 0.5 - point.z;
     (screen_x, screen_y)
+}
+
+fn rasterize_depth_sphere(
+    projection: &Projection,
+    depth: &mut [f32],
+    sprite_width: u32,
+    sprite_height: u32,
+    center: Vec3,
+    radius: f32,
+    depth_value: f32,
+) {
+    if radius <= 0.0 {
+        return;
+    }
+    let (cx, cy) = projection.project(center);
+    let screen_radius = radius * projection.scale;
+    if screen_radius <= 0.0 {
+        return;
+    }
+
+    let min_x = (cx - screen_radius).floor().max(0.0) as i32;
+    let max_x = (cx + screen_radius).ceil().min(sprite_width.saturating_sub(1) as f32) as i32;
+    let min_y = (cy - screen_radius).floor().max(0.0) as i32;
+    let max_y = (cy + screen_radius).ceil().min(sprite_height.saturating_sub(1) as f32) as i32;
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx_screen = x as f32 - cx;
+            let dy_screen = y as f32 - cy;
+            if dx_screen * dx_screen + dy_screen * dy_screen > screen_radius * screen_radius {
+                continue;
+            }
+            let (dx_world, dy_world) = screen_to_world_delta(dx_screen, dy_screen, projection.scale);
+            let dist2 = dx_world * dx_world + dy_world * dy_world;
+            if dist2 > radius * radius {
+                continue;
+            }
+            let idx = (y as u32 * sprite_width + x as u32) as usize;
+            if depth_value <= depth[idx] {
+                continue;
+            }
+            depth[idx] = depth_value;
+        }
+    }
+}
+
+fn screen_to_world_delta(dx_screen: f32, dy_screen: f32, scale: f32) -> (f32, f32) {
+    if scale <= f32::EPSILON {
+        return (0.0, 0.0);
+    }
+    let a = dx_screen / scale;
+    let b = dy_screen / scale;
+    let dx = (a + 2.0 * b) * 0.5;
+    let dy = (2.0 * b - a) * 0.5;
+    (dx, dy)
+}
+
+fn encode_normal(normal: Vec3) -> Rgba<u8> {
+    let nx = (normal.x * 0.5 + 0.5).clamp(0.0, 1.0);
+    let ny = (normal.y * 0.5 + 0.5).clamp(0.0, 1.0);
+    let nz = (normal.z * 0.5 + 0.5).clamp(0.0, 1.0);
+    Rgba([
+        (nx * 255.0).round() as u8,
+        (ny * 255.0).round() as u8,
+        (nz * 255.0).round() as u8,
+        255,
+    ])
+}
+
+fn compute_tree_sphere(model: &TreeModel) -> (Vec3, f32) {
+    let mut min = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
+
+    for segment in &model.segments {
+        expand_world_bounds(segment.start, segment.radius, &mut min, &mut max);
+        expand_world_bounds(segment.end, segment.radius, &mut min, &mut max);
+    }
+    for leaf in &model.leaves {
+        expand_world_bounds(leaf.position, leaf.size, &mut min, &mut max);
+    }
+
+    if !min.x.is_finite() {
+        min = Vec3::new(-1.0, -1.0, -1.0);
+        max = Vec3::new(1.0, 1.0, 1.0);
+    }
+
+    let center = Vec3::new(
+        (min.x + max.x) * 0.5,
+        (min.y + max.y) * 0.5,
+        (min.z + max.z) * 0.5,
+    );
+    let mut radius: f32 = 0.0;
+    for segment in &model.segments {
+        radius = radius.max(distance_with_radius(center, segment.start, segment.radius));
+        radius = radius.max(distance_with_radius(center, segment.end, segment.radius));
+    }
+    for leaf in &model.leaves {
+        radius = radius.max(distance_with_radius(center, leaf.position, leaf.size));
+    }
+
+    (center, radius.max(0.001))
+}
+
+fn expand_world_bounds(point: Vec3, radius: f32, min: &mut Vec3, max: &mut Vec3) {
+    let r = radius.max(0.0);
+    min.x = min.x.min(point.x - r);
+    min.y = min.y.min(point.y - r);
+    min.z = min.z.min(point.z - r);
+    max.x = max.x.max(point.x + r);
+    max.y = max.y.max(point.y + r);
+    max.z = max.z.max(point.z + r);
+}
+
+fn distance_with_radius(center: Vec3, point: Vec3, radius: f32) -> f32 {
+    let dx = point.x - center.x;
+    let dy = point.y - center.y;
+    let dz = point.z - center.z;
+    (dx * dx + dy * dy + dz * dz).sqrt() + radius.max(0.0)
 }
 
 fn draw_thick_line(
