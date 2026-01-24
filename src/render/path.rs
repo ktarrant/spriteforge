@@ -83,18 +83,10 @@ fn render_path_tile_with_mask(
         let brick_row: u8 = brick_v as u8;
         let brick_coli: u8 = brick_col % 4;
         let brick_rowi: u8 = (brick_row + brick_col) % 4;
-        // let edge_rows = 0.max(brick_row + 1 - brick_count.saturating_sub(cutoff_rows))
-        //                         .max(cutoff_rows - brick_row);
-        // let edge_cols = 0.max(brick_row + 1 - brick_count.saturating_sub(cutoff_rows))
-        //                         .max(cutoff_rows - brick_row);
-        // // Encode the brick's ID using rowi + coli + edge flags
-        // let brick_id: u8 = (brick_rowi & BR_IND_MASK) << BR_ROW_SHIFT |
-        //                     (brick_coli & BR_IND_MASK) << BR_COL_SHIFT |
-        //                     (edge_rows & BR_EDGE_MASK) << BR_EDGE_ROW_SHIFT |
-        //                     (edge_cols & BR_EDGE_MASK) << BR_EDGE_COL_SHIFT;
-        // let allowed_ns: [u8; 1] = [
-        //     (0x01 << BR_EDGE_ROW_SHIFT) | (0x01 << BR_ROW_SHIFT),
-        // ];
+        const BRICK_A: u8 = 75;
+        const BRICK_B: u8 = 90;
+        const BRICK_C: u8 = 115;
+        const BRICK_D: u8 = 130;
 
         let alpha_u8: u8 = 255;
         if (transition_mask & EDGE_N != 0) && (brick_row >= brick_count - 1) && (brick_coli != 1) {
@@ -109,9 +101,18 @@ fn render_path_tile_with_mask(
             *pixel = Rgba([0, 0, 0, alpha_u8]);
         } else if brick_v.fract() < brick_crack && (brick_rowi != 0) {
             *pixel = Rgba([0, 0, 0, alpha_u8]);
-        // An example of filling a brick the hard way
-        // } else if brick_row == 3 && (brick_col == 2 || brick_col == 3) {
-        //     *pixel = Rgba([55, 55, 55, 255])
+        } else if (brick_rowi == 0 || brick_rowi == 3) && brick_coli == 2 {
+            *pixel = Rgba([BRICK_A, BRICK_A, BRICK_A, 255]);;
+        } else if (brick_rowi == 0 || brick_rowi == 3) && brick_coli == 1 {
+            *pixel = Rgba([BRICK_B, BRICK_B, BRICK_B, 255])
+        } else if brick_rowi == 1 && brick_coli == 0 {
+            *pixel = Rgba([BRICK_C, BRICK_C, BRICK_C, 255])
+        } else if brick_rowi == 2 && brick_coli == 1 {
+            *pixel = Rgba([BRICK_C, BRICK_C, BRICK_C, 255])
+        } else if brick_rowi == 2 && brick_coli == 0 {
+            *pixel = Rgba([BRICK_D, BRICK_D, BRICK_D, 255])
+        } else if brick_rowi == 1 && brick_coli == 3 {
+            *pixel = Rgba([BRICK_D, BRICK_D, BRICK_D, 255])
         }
     }
     Ok(img)
