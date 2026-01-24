@@ -38,6 +38,7 @@ const WATER_MASK_IMAGE: &str = "out/tilesheet/water_mask.png";
 const WATER_TRANSITION_MASK_IMAGE: &str = "out/tilesheet/water_transition_mask.png";
 const TREE_IMAGE: &str = "out/tilesheet/tree.png";
 const TREE_META: &str = "out/tilesheet/tree.json";
+const TREE_MASK_IMAGE: &str = "out/tilesheet/tree_mask.png";
 const MAP_WIDTH: u32 = 24;
 const MAP_HEIGHT: u32 = 24;
 const PATH_MAP_WIDTH: u32 = 64;
@@ -68,6 +69,7 @@ struct TilesheetPaths {
     water_transition_mask_image: PathBuf,
     tree_image: PathBuf,
     tree_meta: PathBuf,
+    tree_mask_image: PathBuf,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
@@ -77,6 +79,23 @@ struct WaterFoamMaterial {
     mask_texture: Handle<Image>,
     #[uniform(2)]
     params: WaterFoamParams,
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
+struct TreeLightMaterial {
+    #[texture(0)]
+    #[sampler(1)]
+    normal_texture: Handle<Image>,
+    #[uniform(2)]
+    params: TreeLightParams,
+}
+
+#[derive(Clone, Copy, Debug, Default, ShaderType)]
+struct TreeLightParams {
+    light_dir: Vec4,
+    ambient_strength: f32,
+    diffuse_strength: f32,
+    _pad0: Vec2,
 }
 
 #[derive(Clone, Copy, Debug, Default, ShaderType)]
@@ -89,6 +108,12 @@ struct WaterFoamParams {
 impl MaterialTilemap for WaterFoamMaterial {
     fn fragment_shader() -> ShaderRef {
         "assets/shaders/water_foam.wgsl".into()
+    }
+}
+
+impl MaterialTilemap for TreeLightMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "assets/shaders/tree_light.wgsl".into()
     }
 }
 
@@ -112,6 +137,7 @@ struct MapAssets {
     tree_texture: Handle<Image>,
     water_material: Handle<WaterFoamMaterial>,
     water_transition_material: Handle<WaterFoamMaterial>,
+    tree_material: Handle<TreeLightMaterial>,
     hover_outline_texture: Handle<Image>,
     selected_outline_texture: Handle<Image>,
     map_size: TilemapSize,
@@ -186,6 +212,7 @@ fn main() {
         )
         .add_plugins(TilemapPlugin)
         .add_plugins(MaterialTilemapPlugin::<WaterFoamMaterial>::default())
+        .add_plugins(MaterialTilemapPlugin::<TreeLightMaterial>::default())
         .insert_resource(map_kind)
         .add_plugins(TileSelectionPlugin)
         .add_plugins(MiniMapPlugin)
@@ -209,6 +236,7 @@ fn main() {
             water_transition_mask_image: PathBuf::from(WATER_TRANSITION_MASK_IMAGE),
             tree_image: PathBuf::from(TREE_IMAGE),
             tree_meta: workspace_root.join(TREE_META),
+            tree_mask_image: PathBuf::from(TREE_MASK_IMAGE),
         })
         .add_systems(Startup, setup)
         .add_systems(
@@ -244,6 +272,7 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<WaterFoamMaterial>>,
+    mut tree_materials: ResMut<Assets<TreeLightMaterial>>,
     map_kind: Res<MapKind>,
     paths: Res<TilesheetPaths>,
 ) {
@@ -333,6 +362,8 @@ fn setup(
         asset_server.load(paths.water_mask_image.to_string_lossy().to_string());
     let water_transition_mask_texture: Handle<Image> =
         asset_server.load(paths.water_transition_mask_image.to_string_lossy().to_string());
+    let tree_mask_texture: Handle<Image> =
+        asset_server.load(paths.tree_mask_image.to_string_lossy().to_string());
 
     let (map_width, map_height) = match *map_kind {
         MapKind::Path => (PATH_MAP_WIDTH, PATH_MAP_HEIGHT),
@@ -373,6 +404,15 @@ fn setup(
             foam_settings: Vec4::new(0.018, 2.2, 0.18, 0.0),
         },
     });
+    let tree_material = tree_materials.add(TreeLightMaterial {
+        normal_texture: tree_mask_texture,
+        params: TreeLightParams {
+            light_dir: Vec4::new(1.0, 0.0, 0.0, 0.0),
+            ambient_strength: 1.0,
+            diffuse_strength: 3.0,
+            _pad0: Vec2::ZERO,
+        },
+    });
     let hover_outline_texture =
         images.add(create_outline_image(sprite_width as u32, [255, 255, 255, 255], 2));
     let selected_outline_texture =
@@ -396,6 +436,7 @@ fn setup(
         tree_texture,
         water_material: water_material,
         water_transition_material: water_transition_material,
+        tree_material,
         hover_outline_texture,
         selected_outline_texture,
         map_size,
@@ -695,7 +736,7 @@ fn spawn_map(
     let mut tree_transform =
         get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
     tree_transform.translation.z = 1.6;
-    commands.entity(tree_entity).insert(TilemapBundle {
+    commands.entity(tree_entity).insert(MaterialTilemapBundle {
         grid_size: assets.grid_size,
         size: assets.map_size,
         storage: tree_storage,
@@ -703,6 +744,7 @@ fn spawn_map(
         tile_size: assets.tree_tile_size,
         map_type,
         transform: tree_transform,
+        material: assets.tree_material.clone(),
         ..Default::default()
     });
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
