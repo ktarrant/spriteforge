@@ -1144,7 +1144,7 @@ fn time_of_day_label(time_of_day: TimeOfDay) -> &'static str {
 fn tree_light_params(time_of_day: TimeOfDay) -> TreeLightParams {
     match time_of_day {
         TimeOfDay::Dawn => TreeLightParams {
-            light_dir: Vec4::new(-0.7, -0.1, 0.7, 0.0),
+            light_dir: Vec4::new(-0.707, 0.707, 0.0, 0.0),
             ambient_strength: 0.55,
             diffuse_strength: 0.65,
             _pad0: Vec2::ZERO,
@@ -1156,7 +1156,7 @@ fn tree_light_params(time_of_day: TimeOfDay) -> TreeLightParams {
             _pad0: Vec2::ZERO,
         },
         TimeOfDay::Dusk => TreeLightParams {
-            light_dir: Vec4::new(0.7, 0.1, 0.7, 0.0),
+            light_dir: Vec4::new(0.707, -0.707, 0.0, 0.0),
             ambient_strength: 0.55,
             diffuse_strength: 0.65,
             _pad0: Vec2::ZERO,
