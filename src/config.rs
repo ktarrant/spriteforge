@@ -8,6 +8,8 @@ pub const TILESET_CONFIG_DIR: &str = "configs/tile";
 pub struct TileConfig {
     pub name: String,
     pub size: Option<u32>,
+    pub tile_width: Option<u32>,
+    pub tile_height: Option<u32>,
     pub bg: Option<String>,
     pub seed: Option<u64>,
     pub tilesheet_seed_start: Option<u64>,

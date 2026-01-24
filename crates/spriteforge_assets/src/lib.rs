@@ -176,6 +176,8 @@ pub struct TilesheetMetadata {
     pub image: String,
     pub config: String,
     pub tile_size: u32,
+    pub tile_width: Option<u32>,
+    pub tile_height: Option<u32>,
     pub columns: u32,
     pub rows: u32,
     pub padding: u32,

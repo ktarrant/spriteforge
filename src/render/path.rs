@@ -12,18 +12,20 @@ use spriteforge_assets::{EDGE_N, EDGE_E, EDGE_W, EDGE_S, uv_from_xy};
 // const BR_EDGE_COL_SHIFT: u8 = 8;
 
 pub fn render_path_tile(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "path" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    render_path_tile_with_mask(size, bg, config, 0)
+    render_path_tile_with_mask(tile_width, tile_height, bg, config, 0)
 }
 
 pub fn render_path_transition_tile(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
     transition_mask: u8,
@@ -31,11 +33,12 @@ pub fn render_path_transition_tile(
     if config.name != "path_transition" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    render_path_tile_with_mask(size, bg, config, transition_mask)
+    render_path_tile_with_mask(tile_width, tile_height, bg, config, transition_mask)
 }
 
 fn render_path_tile_with_mask(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
     transition_mask: u8,
@@ -47,12 +50,11 @@ fn render_path_tile_with_mask(
             .unwrap_or_else(|| "#6b6b6b".to_string()),
     )?;
 
-    let mut img = ImageBuffer::from_pixel(size, size, bg);
-    draw_isometric_ground(&mut img, size, path);
+    let mut img = ImageBuffer::from_pixel(tile_width, tile_height, bg);
+    draw_isometric_ground(&mut img, tile_width, tile_height, path);
 
     // Apply path edge transitions
-    let w = img.width().max(1) as f32;
-    let h = img.height().max(1) as f32;
+    let width = img.width().max(1) as f32;
     let brick_count: u8 = config.path_brick_count.unwrap_or(8).max(1) as u8;
     let brick_row_width: f32 = 1.0 / brick_count as f32;
     let brick_col_width: f32 = 1.0 / brick_count as f32;
@@ -61,8 +63,8 @@ fn render_path_tile_with_mask(
         if pixel.0[3] == 0 {
             continue;
         }
-        let xf = x as f32 / w;
-        let yf = y as f32 / h;
+        let xf = x as f32 / width;
+        let yf = y as f32 / width;
         let (u, v) = uv_from_xy(xf, yf);
         if u < 0.0 || v < 0.0 {
             pixel.0[3] = 0;

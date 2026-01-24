@@ -5,26 +5,28 @@ use crate::render::util::{draw_isometric_ground, parse_hex_color};
 use spriteforge_assets::edge_weight_for_mask;
 
 pub fn render_water_tile(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
     if config.name != "water" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
-    let mut img = ImageBuffer::from_pixel(size, size, bg);
+    let mut img = ImageBuffer::from_pixel(tile_width, tile_height, bg);
     let water = parse_hex_color(
         &config
             .water_base
             .clone()
             .unwrap_or_else(|| "#2a4f7a".to_string()),
     )?;
-    draw_isometric_ground(&mut img, size, water);
+    draw_isometric_ground(&mut img, tile_width, tile_height, water);
     Ok(img)
 }
 
 pub fn render_water_transition_tile(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     bg: Rgba<u8>,
     config: &TileConfig,
     transition_mask: u8,
@@ -47,17 +49,17 @@ pub fn render_water_transition_tile(
         }
     }
 
-    let mut img = ImageBuffer::from_pixel(size, size, bg);
-    draw_isometric_ground(&mut img, size, water);
+    let mut img = ImageBuffer::from_pixel(tile_width, tile_height, bg);
+    draw_isometric_ground(&mut img, tile_width, tile_height, water);
     let gradient = 0.0;
-    let w = img.width().max(1) as f32;
-    let h = img.height().max(1) as f32;
+    let width = img.width().max(1) as f32;
+    let height = img.height().max(1) as f32;
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         if pixel.0[3] == 0 {
             continue;
         }
-        let xf = x as f32 / w;
-        let yf = y as f32 / h;
+        let xf = x as f32 / width;
+        let yf = y as f32 / width;
         let [r, g, b, _] = pixel.0;
         let alpha_u8 =
             (edge_weight_for_mask(mask, xf, yf, cutoff, gradient) * 255.0).round() as u8;
@@ -66,14 +68,15 @@ pub fn render_water_transition_tile(
     Ok(img)
 }
 
-pub fn render_water_mask_tile(size: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-    let mut tile = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
-    draw_isometric_ground(&mut tile, size, Rgba([255, 255, 255, 255]));
+pub fn render_water_mask_tile(tile_width: u32, tile_height: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let mut tile = ImageBuffer::from_pixel(tile_width, tile_height, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut tile, tile_width, tile_height, Rgba([255, 255, 255, 255]));
     tile
 }
 
 pub fn render_water_transition_mask_tile(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     config: &TileConfig,
     transition_mask: u8,
     overrides: Option<&crate::config::TransitionOverrides>,
@@ -88,8 +91,8 @@ pub fn render_water_transition_mask_tile(
             cutoff = override_cutoff.clamp(0.0, 1.0);
         }
     }
-    let mut tile = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
-    draw_isometric_ground(&mut tile, size, Rgba([255, 255, 255, 255]));
+    let mut tile = ImageBuffer::from_pixel(tile_width, tile_height, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut tile, tile_width, tile_height, Rgba([255, 255, 255, 255]));
 
     // Apply water edge transitions
     let mut gradient = config.water_edge_gradient.unwrap_or(0.2).max(0.0);
@@ -98,14 +101,14 @@ pub fn render_water_transition_mask_tile(
             gradient = override_gradient.max(0.0);
         }
     }
-    let w = tile.width().max(1) as f32;
-    let h = tile.height().max(1) as f32;
+    let width = tile.width().max(1) as f32;
+    let height = tile.height().max(1) as f32;
     for (x, y, pixel) in tile.enumerate_pixels_mut() {
         if pixel.0[3] == 0 {
             continue;
         }
-        let xf = x as f32 / w;
-        let yf = y as f32 / h;
+        let xf = x as f32 / width;
+        let yf = y as f32 / width;
         let [r, g, b, _] = pixel.0;
         let alpha_u8 = (edge_weight_for_mask(mask, xf, yf, cutoff, gradient) * 255.0).round() as u8;
         *pixel = Rgba([r, g, b, alpha_u8]);

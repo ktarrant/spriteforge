@@ -10,7 +10,8 @@ pub use spriteforge_assets::{
 };
 
 pub fn render_transition_tilesheet<F>(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     _bg: Rgba<u8>,
     entries: &[TilesheetEntry],
     columns: u32,
@@ -23,8 +24,8 @@ where
     let masks = all_transition_masks();
     let cols = columns.max(1);
     let rows = ((masks.len() as u32) + cols - 1) / cols;
-    let sheet_w = cols * size + padding * (cols.saturating_sub(1));
-    let sheet_h = rows * size + padding * (rows.saturating_sub(1));
+    let sheet_w = cols * tile_width + padding * (cols.saturating_sub(1));
+    let sheet_h = rows * tile_height + padding * (rows.saturating_sub(1));
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, mask) in masks.iter().enumerate() {
@@ -37,8 +38,8 @@ where
         let tile = render_tile(*mask, seed, overrides)?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
-        let x = (col * size + padding * col) as i32;
-        let y = (row * size + padding * row) as i32;
+        let x = (col * tile_width + padding * col) as i32;
+        let y = (row * tile_height + padding * row) as i32;
         util::blit_offset(&mut sheet, &tile, x, y);
     }
 
@@ -46,7 +47,8 @@ where
 }
 
 pub fn render_transition_mask_tilesheet<F>(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     entries: &[TilesheetEntry],
     columns: u32,
     padding: u32,
@@ -58,8 +60,8 @@ where
     let masks = all_transition_masks();
     let cols = columns.max(1);
     let rows = ((masks.len() as u32) + cols - 1) / cols;
-    let sheet_w = cols * size + padding * (cols.saturating_sub(1));
-    let sheet_h = rows * size + padding * (rows.saturating_sub(1));
+    let sheet_w = cols * tile_width + padding * (cols.saturating_sub(1));
+    let sheet_h = rows * tile_height + padding * (rows.saturating_sub(1));
     let mut sheet = ImageBuffer::from_pixel(sheet_w, sheet_h, Rgba([0, 0, 0, 0]));
 
     for (i, mask) in masks.iter().enumerate() {
@@ -71,8 +73,8 @@ where
         let tile = render_tile(*mask, overrides)?;
         let col = (i as u32) % cols;
         let row = (i as u32) / cols;
-        let x = (col * size + padding * col) as i32;
-        let y = (row * size + padding * row) as i32;
+        let x = (col * tile_width + padding * col) as i32;
+        let y = (row * tile_height + padding * row) as i32;
         util::blit_offset(&mut sheet, &tile, x, y);
     }
 

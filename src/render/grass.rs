@@ -7,7 +7,8 @@ use crate::render::util::{blit, draw_isometric_ground, parse_hex_color};
 use spriteforge_assets::edge_weight_for_mask;
 
 pub fn render_grass_tile(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
@@ -17,19 +18,22 @@ pub fn render_grass_tile(
     }
     let mut rng = StdRng::seed_from_u64(seed);
     let palette = grass_palette(config)?;
-    let mut img = ImageBuffer::from_pixel(size, size, bg);
-    let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
-    draw_isometric_ground(&mut base, size, palette[0]);
+    let mut img = ImageBuffer::from_pixel(tile_width, tile_height, bg);
+    let mut base = ImageBuffer::from_pixel(tile_width, tile_height, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut base, tile_width, tile_height, palette[0]);
     blit(&mut img, &base);
 
     let blade_min = config.blade_min.unwrap_or(1);
-    let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
+    let blade_max = config
+        .blade_max
+        .unwrap_or_else(|| default_blade_max(tile_width));
     add_grass_blades(&mut img, &base, &mut rng, &palette, blade_min, blade_max);
     Ok(img)
 }
 
 pub fn render_grass_transition_tile(
-    size: u32,
+    tile_width: u32,
+    tile_height: u32,
     bg: Rgba<u8>,
     seed: u64,
     config: &TileConfig,
@@ -41,12 +45,14 @@ pub fn render_grass_transition_tile(
     }
     let mut rng = StdRng::seed_from_u64(seed);
     let grass_palette = grass_palette(config)?;
-    let mut img = ImageBuffer::from_pixel(size, size, bg);
-    let mut base = ImageBuffer::from_pixel(size, size, Rgba([0, 0, 0, 0]));
-    draw_isometric_ground(&mut base, size, Rgba([0, 0, 0, 255]));
+    let mut img = ImageBuffer::from_pixel(tile_width, tile_height, bg);
+    let mut base = ImageBuffer::from_pixel(tile_width, tile_height, Rgba([0, 0, 0, 0]));
+    draw_isometric_ground(&mut base, tile_width, tile_height, Rgba([0, 0, 0, 255]));
 
     let blade_min = config.blade_min.unwrap_or(1);
-    let blade_max = config.blade_max.unwrap_or_else(|| default_blade_max(size));
+    let blade_max = config
+        .blade_max
+        .unwrap_or_else(|| default_blade_max(tile_width));
     let mut density = config.transition_density.unwrap_or(0.25).clamp(0.0, 1.0);
     let mut bias = config.transition_bias.unwrap_or(0.85).clamp(0.0, 1.0);
     let mut falloff = config.transition_falloff.unwrap_or(2.2);
@@ -127,16 +133,15 @@ pub fn add_grass_blades_weighted(
 ) {
     let min_blade = blade_min.max(1);
     let max_blade = blade_max.max(min_blade);
-    let w = base.width().max(1) as f32;
-    let h = base.height().max(1) as f32;
+    let width = base.width().max(1) as f32;
     let shades = [palette[1], palette[2], palette[3]];
 
     for (x, y, pixel) in base.enumerate_pixels() {
         if pixel.0[3] == 0 {
             continue;
         }
-        let xf = x as f32 / w;
-        let yf = y as f32 / h;
+        let xf = x as f32 / width;
+        let yf = y as f32 / width;
         let edge_weight =
             edge_weight_for_mask(transition_mask, xf, yf, edge_cutoff, edge_gradient)
                 .powf(falloff);
