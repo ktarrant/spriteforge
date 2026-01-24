@@ -22,6 +22,7 @@ pub struct TileConfig {
     pub grass_edge_gradient: Option<f32>,
     pub water_base: Option<String>,
     pub water_edge_cutoff: Option<f32>,
+    pub water_edge_gradient: Option<f32>,
     pub path_base: Option<String>,
     pub path_brick_count: Option<u32>,
     pub path_brick_crack: Option<f32>,
@@ -48,6 +49,7 @@ pub struct TransitionOverrides {
     pub bias: Option<f32>,
     pub falloff: Option<f32>,
     pub water_edge_cutoff: Option<f32>,
+    pub water_edge_gradient: Option<f32>,
     pub grass_edge_cutoff: Option<f32>,
     pub grass_edge_gradient: Option<f32>,
 }

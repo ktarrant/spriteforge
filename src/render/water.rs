@@ -92,7 +92,12 @@ pub fn render_water_transition_mask_tile(
     draw_isometric_ground(&mut tile, size, Rgba([255, 255, 255, 255]));
 
     // Apply water edge transitions
-    let gradient = 0.2;
+    let mut gradient = config.water_edge_gradient.unwrap_or(0.2).max(0.0);
+    if let Some(overrides) = overrides {
+        if let Some(override_gradient) = overrides.water_edge_gradient {
+            gradient = override_gradient.max(0.0);
+        }
+    }
     let w = tile.width().max(1) as f32;
     let h = tile.height().max(1) as f32;
     for (x, y, pixel) in tile.enumerate_pixels_mut() {

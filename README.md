@@ -122,6 +122,7 @@ Water transition tile example (transparent edge cutout):
   "seed": 5555,
   "water_base": "#1c3f66",
   "water_edge_cutoff": 0.78,
+  "water_edge_gradient": 0.2,
   "tilesheet_seed_start": 201,
   "tilesheet_columns": 4,
   "tilesheet_padding": 0

@@ -65,7 +65,7 @@ fn fragment(in: MeshVertexOutput) -> @location(0) vec4<f32> {
     let noise = hash2(pos * 2.0 + phase);
     let shimmer = crest * params.foam_settings.x * mix(0.8, 1.2, noise) * 1.4;
     let mask = textureSample(mask_texture, mask_sampler, in.uv.xy).a;
-    let shaded = base.rgb + params.foam_color.rgb * shimmer;
+    let shaded = base.rgb - params.foam_color.rgb * shimmer;
     let rgb = mix(base.rgb, shaded, mask);
     return vec4<f32>(rgb, base.a);
 }
