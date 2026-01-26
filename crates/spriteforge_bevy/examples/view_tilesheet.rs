@@ -194,6 +194,7 @@ struct MapSpawn {
     entities: MapEntities,
     base_tiles: Vec<BaseTile>,
     skeleton: Option<MapLayout>,
+    environment: Vec<map_raster::EnvironmentObject>,
 }
 
 #[derive(Resource)]
@@ -201,6 +202,7 @@ struct MapTileData {
     tiles: Vec<BaseTile>,
     map_size: TilemapSize,
     skeleton: Option<MapLayout>,
+    environment: Vec<map_raster::EnvironmentObject>,
 }
 
 #[derive(Resource)]
@@ -559,6 +561,7 @@ fn setup(
         tiles: spawn.base_tiles.clone(),
         map_size: map_size_copy,
         skeleton: spawn.skeleton.clone(),
+        environment: spawn.environment.clone(),
     });
     commands.insert_resource(MiniMapSource {
         tiles: spawn.base_tiles,
@@ -738,6 +741,7 @@ fn spawn_map(
         },
         base_tiles: raster.base_tiles,
         skeleton,
+        environment: raster.environment,
     }
 }
 
@@ -934,6 +938,17 @@ fn update_selected_tile_ui(
         format!("Pos: {}, {}", tile_pos.x, tile_pos.y),
         format!("Type: {}", tile_type),
     ];
+    let environment = environment_for_tile(tile_pos, &tile_data.environment);
+    if environment.is_empty() {
+        lines.push("Environment: None".to_string());
+    } else {
+        let labels = environment
+            .iter()
+            .map(|kind| environment_kind_label(*kind))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!("Environment: {}", labels));
+    }
     if let Some(mask) = transition_mask_for_tile(
         entities.layer_map(LayerKind::Transition),
         tile_pos,
@@ -978,6 +993,26 @@ fn transition_mask_for_tile(
     tile.transition_mask
 }
 
+fn environment_for_tile(
+    tile_pos: TilePos,
+    environment: &[map_raster::EnvironmentObject],
+) -> Vec<map_raster::EnvironmentKind> {
+    let mut results = Vec::new();
+    for object in environment {
+        if object.x == tile_pos.x && object.y == tile_pos.y {
+            results.push(object.kind);
+        }
+    }
+    results
+}
+
+fn environment_kind_label(kind: map_raster::EnvironmentKind) -> &'static str {
+    match kind {
+        map_raster::EnvironmentKind::Tree => "Tree",
+        map_raster::EnvironmentKind::Bush => "Bush",
+    }
+}
+
 fn regenerate_map_on_space(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
@@ -1018,6 +1053,7 @@ fn regenerate_map_on_space(
     tile_data.tiles = spawn.base_tiles.clone();
     tile_data.map_size = assets.map_size;
     tile_data.skeleton = spawn.skeleton.clone();
+    tile_data.environment = spawn.environment.clone();
     minimap.tiles = spawn.base_tiles;
     minimap.map_size = assets.map_size;
     minimap.grid_size = assets.grid_size;

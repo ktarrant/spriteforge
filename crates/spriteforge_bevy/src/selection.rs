@@ -45,6 +45,7 @@ pub struct TileSelectedEvent {
     pub map: Entity,
     pub tile_pos: TilePos,
     pub tile_entity: Option<Entity>,
+    pub world_pos: Vec2,
 }
 
 pub struct TileSelectionPlugin;
@@ -140,6 +141,7 @@ fn update_selected_tile(
         map: map_entity,
         tile_pos,
         tile_entity,
+        world_pos: cursor_pos.0,
     });
 }
 
