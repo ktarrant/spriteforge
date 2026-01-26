@@ -258,6 +258,9 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         segment.radius = (settings.base_radius * taper * base_scale).max(0.08);
     }
 
+    let mut roots = generate_roots(settings, &mut rng);
+    segments.append(&mut roots);
+
     let tree_center = compute_tree_center(&segments, &nodes);
     for segment in segments.iter_mut() {
         let mid = Vec3::new(
@@ -365,6 +368,70 @@ pub fn generate_tree(seed: u64, settings: &TreeSettings) -> TreeModel {
         leaf_stems,
         leaves,
     }
+}
+
+fn generate_roots(settings: &TreeSettings, rng: &mut StdRng) -> Vec<TreeSegment> {
+    let root_count = rng.gen_range(3..=5);
+    let mut roots = Vec::with_capacity(root_count * 2);
+    for _ in 0..root_count {
+        let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+        let length = rng.gen_range(settings.base_radius * 3.5..settings.base_radius * 6.5);
+        let lateral = length * rng.gen_range(0.6..1.0);
+        let downward = length * rng.gen_range(0.2..0.6);
+        let mid = Vec3::new(
+            angle.cos() * lateral * 0.33,
+            angle.sin() * lateral * 0.33,
+            -downward * 0.33,
+        );
+        let end = Vec3::new(angle.cos() * lateral, angle.sin() * lateral, -downward);
+        let base_radius = settings.base_radius * rng.gen_range(0.85..1.25);
+        let mid_radius = base_radius * rng.gen_range(0.7..0.85);
+        let mid2_radius = base_radius * rng.gen_range(0.55..0.7);
+        let tip_radius = base_radius * rng.gen_range(0.4..0.55);
+        let mid2 = Vec3::new(
+            angle.cos() * lateral * 0.66,
+            angle.sin() * lateral * 0.66,
+            -downward * 0.66,
+        );
+
+        roots.push(TreeSegment {
+            start: Vec3::new(0.0, 0.0, 0.0),
+            end: mid,
+            radius: base_radius,
+            normal: Vec3::default(),
+            depth: 0,
+        });
+        roots.push(TreeSegment {
+            start: mid,
+            end: mid2,
+            radius: mid_radius,
+            normal: Vec3::default(),
+            depth: 0,
+        });
+        roots.push(TreeSegment {
+            start: mid2,
+            end: Vec3::new(
+                angle.cos() * lateral * 0.85,
+                angle.sin() * lateral * 0.85,
+                -downward * 0.85,
+            ),
+            radius: mid2_radius,
+            normal: Vec3::default(),
+            depth: 0,
+        });
+        roots.push(TreeSegment {
+            start: Vec3::new(
+                angle.cos() * lateral * 0.85,
+                angle.sin() * lateral * 0.85,
+                -downward * 0.85,
+            ),
+            end,
+            radius: tip_radius,
+            normal: Vec3::default(),
+            depth: 0,
+        });
+    }
+    roots
 }
 
 fn compute_tree_center(segments: &[TreeSegment], nodes: &[Node]) -> Vec3 {

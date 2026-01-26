@@ -363,13 +363,14 @@ fn build_projection(model: &TreeModel, sprite_width: u32, sprite_height: u32) ->
     let height_f = sprite_height.saturating_sub(1).max(1) as f32;
     let pad_x = width_f * 0.05;
     let pad_top = height_f * 0.05;
-    let pad_bottom = width_f * 0.05;
+    let bottom_bias = -width_f * 0.1;
     let available_w = (width_f - pad_x * 2.0).max(1.0);
-    let available_h = (height_f - (pad_top + pad_bottom)).max(1.0);
+    let available_h = (height_f - (pad_top + bottom_bias)).max(1.0);
     let scale = (available_w / width).min(available_h / height);
 
     let offset_x = width_f * 0.5 - (min_x + max_x) * 0.5 * scale;
-    let offset_y = (height_f - pad_bottom) - max_y * scale;
+    let base_tile_center_offset = (sprite_width as f32) * 0.25;
+    let offset_y = (height_f - bottom_bias) - max_y * scale - base_tile_center_offset;
 
     Projection {
         scale,
