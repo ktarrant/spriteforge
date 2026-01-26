@@ -4,7 +4,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::window::PrimaryWindow;
 use bevy_ecs_tilemap::prelude::{TilemapGridSize, TilemapSize, TilemapType, TilePos};
 
-use crate::map_skeleton::{MapArea, MapSkeleton, PathSegment};
+use crate::map_layout::{MapArea, MapLayout, PathSegment};
 use crate::{BaseTile, TileSelectionState};
 
 #[derive(Resource, Clone)]
@@ -14,7 +14,7 @@ pub struct MiniMapSource {
     pub grid_size: TilemapGridSize,
     pub map_type: TilemapType,
     pub map_entity: Option<Entity>,
-    pub skeleton: Option<MapSkeleton>,
+    pub skeleton: Option<MapLayout>,
 }
 
 #[derive(Resource, Clone)]
@@ -551,3 +551,4 @@ fn color_to_rgba8(color: Color) -> [u8; 4] {
         (a * 255.0).round() as u8,
     ]
 }
+

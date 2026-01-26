@@ -1,12 +1,5 @@
-use rand::rngs::StdRng;
-
-use crate::map_skeleton::{AreaType, MapSkeleton, PathSegment};
+use crate::map_layout::{AreaType, MapLayout, PathSegment};
 use crate::BaseTile;
-
-pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
-    let skeleton = crate::map_skeleton::generate_map_skeleton(width, height, rng);
-    rasterize_skeleton(width, height, &skeleton)
-}
 
 pub fn rasterize_paths(width: u32, height: u32, paths: &[PathSegment]) -> Vec<BaseTile> {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
@@ -16,7 +9,7 @@ pub fn rasterize_paths(width: u32, height: u32, paths: &[PathSegment]) -> Vec<Ba
     cells
 }
 
-pub fn rasterize_skeleton(width: u32, height: u32, skeleton: &MapSkeleton) -> Vec<BaseTile> {
+pub fn rasterize_layout(width: u32, height: u32, skeleton: &MapLayout) -> Vec<BaseTile> {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
     for segment in &skeleton.paths {
         rasterize_segment(width, height, segment, &mut cells);
@@ -145,7 +138,34 @@ fn set_tile(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map_layout::{MapAreaConfig, MapLayoutConfig, MapPointConfig};
+    use rand::rngs::StdRng;
     use rand::SeedableRng;
+
+    fn sample_layout_config() -> MapLayoutConfig {
+        MapLayoutConfig {
+            entry: MapPointConfig { x: 1.0, y: 0.0 },
+            fork: MapPointConfig { x: 0.5, y: 0.5 },
+            exits: vec![
+                MapPointConfig { x: 0.0, y: 0.5 },
+                MapPointConfig { x: 0.5, y: 1.0 },
+            ],
+            areas: vec![
+                MapAreaConfig {
+                    x: 1.0 / 6.0,
+                    y: 1.0 / 4.0,
+                    major: false,
+                    connect_to: None,
+                },
+                MapAreaConfig {
+                    x: 3.0 / 4.0,
+                    y: 3.0 / 4.0,
+                    major: true,
+                    connect_to: None,
+                },
+            ],
+        }
+    }
 
     fn dirt_metrics(tiles: &[BaseTile]) -> (usize, f32) {
         let dirt_count = tiles
@@ -165,7 +185,13 @@ mod tests {
         let width = 64;
         let height = 64;
         let mut rng = StdRng::seed_from_u64(1337);
-        let tiles = generate_path_map(width, height, &mut rng);
+        let layout = crate::map_layout::generate_map_layout(
+            width,
+            height,
+            &mut rng,
+            &sample_layout_config(),
+        );
+        let tiles = rasterize_layout(width, height, &layout);
         assert_eq!(tiles.len(), (width * height) as usize);
 
         let (dirt_count, dirt_pct) = dirt_metrics(&tiles);
@@ -186,9 +212,13 @@ mod tests {
         let width = 64;
         let height = 64;
         let mut rng = StdRng::seed_from_u64(1337);
-        let skeleton =
-            crate::map_skeleton::generate_map_skeleton(width, height, &mut rng);
-        let total_length: i32 = skeleton
+        let layout = crate::map_layout::generate_map_layout(
+            width,
+            height,
+            &mut rng,
+            &sample_layout_config(),
+        );
+        let total_length: i32 = layout
             .paths
             .iter()
             .map(|segment| (segment.end_x - segment.start_x).abs()
@@ -201,3 +231,4 @@ mod tests {
         );
     }
 }
+

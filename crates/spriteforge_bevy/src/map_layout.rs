@@ -2,8 +2,6 @@ use rand::rngs::StdRng;
 use rand::Rng;
 use serde::Deserialize;
 use std::path::Path;
-
-const DEFAULT_CONFIG_PATH: &str = "assets/map_skeleton.json";
 const PATH_RADIUS: i32 = 1;
 const CONNECTOR_RADIUS: i32 = 0;
 const DOCK_CHANCE: f64 = 0.25;
@@ -31,7 +29,7 @@ pub struct MapArea {
 }
 
 #[derive(Clone, Debug)]
-pub struct MapSkeleton {
+pub struct MapLayout {
     pub paths: Vec<PathSegment>,
     pub areas: Vec<MapArea>,
     pub water_paths: Vec<PathSegment>,
@@ -54,7 +52,7 @@ pub struct MapAreaConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct MapSkeletonConfig {
+pub struct MapLayoutConfig {
     pub entry: MapPointConfig,
     pub fork: MapPointConfig,
     pub exits: Vec<MapPointConfig>,
@@ -69,26 +67,19 @@ pub enum ConnectorTargetConfig {
     ForkPoint,
 }
 
-pub fn generate_map_skeleton(width: u32, height: u32, rng: &mut StdRng) -> MapSkeleton {
+pub fn generate_map_layout(
+    width: u32,
+    height: u32,
+    rng: &mut StdRng,
+    config: &MapLayoutConfig,
+) -> MapLayout {
     if width == 0 || height == 0 {
-        return MapSkeleton {
+        return MapLayout {
             paths: Vec::new(),
             areas: Vec::new(),
             water_paths: Vec::new(),
         };
     }
-
-    let config = load_map_skeleton_config(Path::new(DEFAULT_CONFIG_PATH))
-        .unwrap_or_else(|_| default_map_skeleton_config());
-    generate_map_skeleton_with_config(width, height, rng, &config)
-}
-
-pub fn generate_map_skeleton_with_config(
-    width: u32,
-    height: u32,
-    rng: &mut StdRng,
-    config: &MapSkeletonConfig,
-) -> MapSkeleton {
     let width_i = width as i32;
     let height_i = height as i32;
     let (entry_x, entry_y) = resolve_point(config.entry, width_i, height_i);
@@ -215,59 +206,16 @@ pub fn generate_map_skeleton_with_config(
         }
     }
 
-    MapSkeleton {
+    MapLayout {
         paths,
         areas,
         water_paths,
     }
 }
 
-pub fn load_map_skeleton_config(path: &Path) -> Result<MapSkeletonConfig, String> {
+pub fn load_map_layout_config(path: &Path) -> Result<MapLayoutConfig, String> {
     let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     serde_json::from_str(&data).map_err(|e| e.to_string())
-}
-
-fn default_map_skeleton_config() -> MapSkeletonConfig {
-    MapSkeletonConfig {
-        entry: MapPointConfig { x: 1.0, y: 0.0 },
-        fork: MapPointConfig { x: 0.5, y: 0.5 },
-        exits: vec![
-            MapPointConfig { x: 0.0, y: 0.5 },
-            MapPointConfig { x: 0.5, y: 1.0 },
-        ],
-        areas: vec![
-            MapAreaConfig {
-                x: 1.0 / 6.0,
-                y: 1.0 / 4.0,
-                major: false,
-                connect_to: Some(ConnectorTargetConfig::ForkAny),
-            },
-            MapAreaConfig {
-                x: 1.0 / 2.0,
-                y: 1.0 / 5.0,
-                major: false,
-                connect_to: Some(ConnectorTargetConfig::MainPath),
-            },
-            MapAreaConfig {
-                x: 3.0 / 4.0,
-                y: 5.0 / 6.0,
-                major: false,
-                connect_to: Some(ConnectorTargetConfig::ForkAny),
-            },
-            MapAreaConfig {
-                x: 3.0 / 4.0,
-                y: 1.0 / 2.0,
-                major: false,
-                connect_to: Some(ConnectorTargetConfig::MainPath),
-            },
-            MapAreaConfig {
-                x: 1.0 / 4.0,
-                y: 3.0 / 4.0,
-                major: true,
-                connect_to: Some(ConnectorTargetConfig::ForkPoint),
-            },
-        ],
-    }
 }
 
 fn resolve_point(point: MapPointConfig, width: i32, height: i32) -> (i32, i32) {
@@ -356,7 +304,7 @@ fn build_areas(
 }
 
 fn connector_targets_from_config(
-    config: &MapSkeletonConfig,
+    config: &MapLayoutConfig,
     width: i32,
     height: i32,
 ) -> Vec<((i32, i32), ConnectorTarget)> {
@@ -887,3 +835,4 @@ impl From<ConnectorTargetConfig> for ConnectorTarget {
         }
     }
 }
+

@@ -14,9 +14,9 @@ use rand::rngs::StdRng;
 use spriteforge_bevy::{
     build_render_layers,
     load_tilesheet_metadata,
-    map_generators::{path, terrain},
-    map_skeleton,
-    BaseTile, LayerKind, MapSkeleton, MiniMapPlugin, MiniMapSource, TileSelectedEvent,
+    map_raster,
+    map_layout,
+    BaseTile, LayerKind, MapLayout, MiniMapPlugin, MiniMapSource, TileSelectedEvent,
     TileSelectionPlugin, TileSelectionSettings, TileSelectionState, TilesheetMetadata,
 };
 use std::collections::HashMap;
@@ -41,15 +41,11 @@ const WATER_TRANSITION_MASK_IMAGE: &str = "out/tilesheet/water_transition_mask.p
 const TREE_IMAGE: &str = "out/tilesheet/tree.png";
 const TREE_META: &str = "out/tilesheet/tree.json";
 const TREE_MASK_IMAGE: &str = "out/tilesheet/tree_mask.png";
-const MAP_WIDTH: u32 = 24;
-const MAP_HEIGHT: u32 = 24;
-const PATH_MAP_WIDTH: u32 = 64;
-const PATH_MAP_HEIGHT: u32 = 64;
-const CLUMP_PASSES: usize = 3;
-const WATER_PASS_PASSES: usize = 2;
+const MAP_WIDTH: u32 = 64;
+const MAP_HEIGHT: u32 = 64;
+const MAP_LAYOUT_CONFIG: &str = "assets/map_layouts/rural_fork.json";
 const CAMERA_MOVE_SPEED: f32 = 900.0;
 const CAMERA_ZOOM: f32 = 1.6;
-const DEFAULT_MAP_KIND: MapKind = MapKind::Path;
 
 #[derive(Resource)]
 struct TilesheetPaths {
@@ -149,6 +145,7 @@ impl LayerCatalog {
 
 #[derive(Resource)]
 struct MapAssets {
+    layout_config: map_layout::MapLayoutConfig,
     layers: LayerCatalog,
     tree_material: Handle<TreeLightMaterial>,
     hover_outline_texture: Handle<Image>,
@@ -190,14 +187,14 @@ impl MapEntities {
 struct MapSpawn {
     entities: MapEntities,
     base_tiles: Vec<BaseTile>,
-    skeleton: Option<MapSkeleton>,
+    skeleton: Option<MapLayout>,
 }
 
 #[derive(Resource)]
 struct MapTileData {
     tiles: Vec<BaseTile>,
     map_size: TilemapSize,
-    skeleton: Option<MapSkeleton>,
+    skeleton: Option<MapLayout>,
 }
 
 #[derive(Resource)]
@@ -222,12 +219,6 @@ enum TimeOfDay {
     Night,
 }
 
-#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
-enum MapKind {
-    Terrain,
-    Path,
-}
-
 #[derive(Resource, Default)]
 struct OverlayState {
     hovered: Option<TilePos>,
@@ -241,7 +232,6 @@ fn main() {
         .join("../..")
         .canonicalize()
         .expect("workspace root");
-    let map_kind = parse_map_kind(std::env::args());
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -254,7 +244,6 @@ fn main() {
         .add_plugins(TilemapPlugin)
         .add_plugins(MaterialTilemapPlugin::<WaterFoamMaterial>::default())
         .add_plugins(MaterialTilemapPlugin::<TreeLightMaterial>::default())
-        .insert_resource(map_kind)
         .add_plugins(TileSelectionPlugin)
         .add_plugins(MiniMapPlugin)
         .init_resource::<OverlayState>()
@@ -294,34 +283,30 @@ fn main() {
         .run();
 }
 
-fn parse_map_kind<I>(args: I) -> MapKind
-where
-    I: IntoIterator<Item = String>,
-{
-    for arg in args {
-        if let Some(value) = arg.strip_prefix("--map=") {
-            return match value {
-                "terrain" => MapKind::Terrain,
-                "path" => MapKind::Path,
-                _ => DEFAULT_MAP_KIND,
-            };
-        }
-    }
-    DEFAULT_MAP_KIND
-}
-
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<WaterFoamMaterial>>,
     mut tree_materials: ResMut<Assets<TreeLightMaterial>>,
-    map_kind: Res<MapKind>,
     paths: Res<TilesheetPaths>,
 ) {
     let mut camera = Camera2dBundle::default();
     camera.transform.scale = Vec3::splat(CAMERA_ZOOM);
     commands.spawn(camera);
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("workspace root");
+    let layout_config_path = workspace_root.join(MAP_LAYOUT_CONFIG);
+    let layout_config = match map_layout::load_map_layout_config(&layout_config_path) {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("Failed to load map layout config: {err}");
+            return;
+        }
+    };
 
     let grass_meta = match load_tilesheet_metadata(&paths.grass_meta) {
         Ok(data) => data,
@@ -408,10 +393,7 @@ fn setup(
     let tree_mask_texture: Handle<Image> =
         asset_server.load(paths.tree_mask_image.to_string_lossy().to_string());
 
-    let (map_width, map_height) = match *map_kind {
-        MapKind::Path => (PATH_MAP_WIDTH, PATH_MAP_HEIGHT),
-        MapKind::Terrain => (MAP_WIDTH, MAP_HEIGHT),
-    };
+    let (map_width, map_height) = (MAP_WIDTH, MAP_HEIGHT);
     let map_size = TilemapSize {
         x: map_width,
         y: map_height,
@@ -519,6 +501,7 @@ fn setup(
         Some(LayerMaterial::Tree(tree_material.clone())),
     );
     let assets = MapAssets {
+        layout_config,
         layers: LayerCatalog { layers, order },
         tree_material,
         hover_outline_texture,
@@ -529,7 +512,7 @@ fn setup(
     };
     let minimap_grid_size = assets.grid_size;
     let seed = 1337;
-    let spawn = spawn_map(&mut commands, &assets, seed, *map_kind);
+    let spawn = spawn_map(&mut commands, &assets, seed);
     commands.insert_resource(assets);
     commands.insert_resource(MapSeed(seed));
     let primary_map = spawn.entities.primary_map;
@@ -556,26 +539,12 @@ fn spawn_map(
     commands: &mut Commands,
     assets: &MapAssets,
     seed: u64,
-    map_kind: MapKind,
 ) -> MapSpawn {
     let mut rng = StdRng::seed_from_u64(seed);
-    let (width, height) = match map_kind {
-        MapKind::Path => (PATH_MAP_WIDTH, PATH_MAP_HEIGHT),
-        MapKind::Terrain => (MAP_WIDTH, MAP_HEIGHT),
-    };
-    let (base_tiles, skeleton) = match map_kind {
-        MapKind::Terrain => {
-            let mut tiles = terrain::generate_terrain_map(width, height, &mut rng);
-            terrain::smooth_terrain(&mut tiles, width, height, CLUMP_PASSES);
-            terrain::reduce_water_islands(&mut tiles, width, height, WATER_PASS_PASSES);
-            (tiles, None)
-        }
-        MapKind::Path => {
-            let skeleton = map_skeleton::generate_map_skeleton(width, height, &mut rng);
-            let tiles = path::rasterize_skeleton(width, height, &skeleton);
-            (tiles, Some(skeleton))
-        }
-    };
+    let (width, height) = (MAP_WIDTH, MAP_HEIGHT);
+    let layout = map_layout::generate_map_layout(width, height, &mut rng, &assets.layout_config);
+    let base_tiles = map_raster::rasterize_layout(width, height, &layout);
+    let skeleton = Some(layout);
     let layers = build_render_layers(
         &base_tiles,
         width,
@@ -979,7 +948,6 @@ fn regenerate_map_on_space(
     mut selection_state: ResMut<TileSelectionState>,
     mut selection_settings: ResMut<TileSelectionSettings>,
     mut entities: ResMut<MapEntities>,
-    map_kind: Res<MapKind>,
     mut tile_data: ResMut<MapTileData>,
     mut minimap: ResMut<MiniMapSource>,
 ) {
@@ -1006,7 +974,7 @@ fn regenerate_map_on_space(
 
     let mut seed_rng = StdRng::seed_from_u64(seed.0);
     seed.0 = seed_rng.next_u64();
-    let spawn = spawn_map(&mut commands, &assets, seed.0, *map_kind);
+    let spawn = spawn_map(&mut commands, &assets, seed.0);
     *entities = spawn.entities;
     tile_data.tiles = spawn.base_tiles.clone();
     tile_data.map_size = assets.map_size;
