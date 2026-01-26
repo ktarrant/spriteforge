@@ -170,7 +170,7 @@ fn render_tile_mask(
             transition_mask.unwrap_or(transition::EDGE_N),
             overrides,
         ),
-        "tree" => tree::render_tree_mask_tile(sprite_width, sprite_height, seed, config),
+        "tree" | "bush" => tree::render_tree_mask_tile(sprite_width, sprite_height, seed, config),
         other => Err(format!("No mask renderer for tile name: {other}")),
     }
 }
@@ -215,7 +215,7 @@ pub fn render_tile(
             config,
             transition_mask.unwrap_or(transition::EDGE_N),
         ),
-        "tree" => tree::render_tree_tile(sprite_width, sprite_height, bg, seed, config),
+        "tree" | "bush" => tree::render_tree_tile(sprite_width, sprite_height, bg, seed, config),
         "debug_weight" => debug_weight::render_weight_debug_tile(
             sprite_width,
             sprite_height,

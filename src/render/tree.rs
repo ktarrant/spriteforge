@@ -13,7 +13,7 @@ pub fn render_tree_tile(
     seed: u64,
     config: &TileConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
-    if config.name != "tree" {
+    if config.name != "tree" && config.name != "bush" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
 
@@ -123,7 +123,7 @@ pub fn render_tree_mask_tile(
     seed: u64,
     config: &TileConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, String> {
-    if config.name != "tree" {
+    if config.name != "tree" && config.name != "bush" {
         return Err(format!("Unknown tile name: {}", config.name));
     }
 

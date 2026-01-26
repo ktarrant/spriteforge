@@ -14,6 +14,7 @@ cargo run -- --out out/tilesheet/path.png --config configs/tile/path.config
 cargo run -- --out out/tilesheet/path_transition.png --config configs/tile/path_transition.config
 cargo run -- --out out/tilesheet/dirt.png --config configs/tile/dirt.config
 cargo run -- --out out/tilesheet/tree.png --config configs/tile/tree.config
+cargo run -- --out out/tilesheet/bush.png --config configs/tile/bush.config
 ```
 
 Build all tilesheets (no args):
@@ -73,6 +74,11 @@ Water tilesheets (including water transitions) also emit a mask PNG named `<conf
 Tree tilesheet (single config):
 ```bash
 cargo run -- --out out/tilesheet/tree.png --config configs/tile/tree.config
+```
+
+Bush tilesheet (single config):
+```bash
+cargo run -- --out out/tilesheet/bush.png --config configs/tile/bush.config
 ```
 
 Debug weight visualization (manual run only):

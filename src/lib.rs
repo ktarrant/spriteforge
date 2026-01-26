@@ -152,6 +152,7 @@ fn build_from_tile_config(
     if tile_config.name == "water"
         || tile_config.name == "water_transition"
         || tile_config.name == "tree"
+        || tile_config.name == "bush"
     {
         let mask = render_tilesheet_mask(
             sprite_width,
