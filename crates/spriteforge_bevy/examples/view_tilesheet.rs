@@ -16,9 +16,10 @@ use spriteforge_bevy::{
     load_tilesheet_metadata,
     map_generators::{path, terrain},
     map_skeleton,
-    BaseTile, MapSkeleton, MiniMapPlugin, MiniMapSource, TileSelectedEvent,
+    BaseTile, LayerKind, MapSkeleton, MiniMapPlugin, MiniMapSource, TileSelectedEvent,
     TileSelectionPlugin, TileSelectionSettings, TileSelectionState, TilesheetMetadata,
 };
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 const GRASS_IMAGE: &str = "out/tilesheet/grass.png";
@@ -118,33 +119,53 @@ impl MaterialTilemap for TreeLightMaterial {
     }
 }
 
+#[derive(Clone)]
+enum LayerMaterial {
+    Water(Handle<WaterFoamMaterial>),
+    Tree(Handle<TreeLightMaterial>),
+}
+
+#[derive(Clone)]
+struct LayerAssets {
+    meta: TilesheetMetadata,
+    texture: Handle<Image>,
+    tile_size: TilemapTileSize,
+    z: f32,
+    material: Option<LayerMaterial>,
+}
+
+struct LayerCatalog {
+    layers: HashMap<LayerKind, LayerAssets>,
+    order: Vec<LayerKind>,
+}
+
+impl LayerCatalog {
+    fn layer(&self, kind: LayerKind) -> &LayerAssets {
+        self.layers
+            .get(&kind)
+            .unwrap_or_else(|| panic!("Missing layer assets for {kind:?}"))
+    }
+}
+
 #[derive(Resource)]
 struct MapAssets {
-    grass_meta: TilesheetMetadata,
-    dirt_meta: TilesheetMetadata,
-    path_meta: TilesheetMetadata,
-    path_transition_meta: TilesheetMetadata,
-    transition_meta: TilesheetMetadata,
-    water_meta: TilesheetMetadata,
-    water_transition_meta: TilesheetMetadata,
-    tree_meta: TilesheetMetadata,
-    grass_texture: Handle<Image>,
-    dirt_texture: Handle<Image>,
-    path_texture: Handle<Image>,
-    path_transition_texture: Handle<Image>,
-    transition_texture: Handle<Image>,
-    water_texture: Handle<Image>,
-    water_transition_texture: Handle<Image>,
-    tree_texture: Handle<Image>,
-    water_material: Handle<WaterFoamMaterial>,
-    water_transition_material: Handle<WaterFoamMaterial>,
+    layers: LayerCatalog,
     tree_material: Handle<TreeLightMaterial>,
     hover_outline_texture: Handle<Image>,
     selected_outline_texture: Handle<Image>,
     map_size: TilemapSize,
-    tile_size: TilemapTileSize,
-    tree_tile_size: TilemapTileSize,
     grid_size: TilemapGridSize,
+    base_tile_size: TilemapTileSize,
+}
+
+impl MapAssets {
+    fn layer(&self, kind: LayerKind) -> &LayerAssets {
+        self.layers.layer(kind)
+    }
+
+    fn layer_meta(&self, kind: LayerKind) -> &TilesheetMetadata {
+        &self.layer(kind).meta
+    }
 }
 
 #[derive(Resource)]
@@ -152,12 +173,18 @@ struct MapEntities {
     tilemaps: Vec<Entity>,
     tiles: Vec<Entity>,
     primary_map: Entity,
-    transition_map: Entity,
-    path_transition_map: Entity,
-    water_transition_map: Entity,
-    tree_map: Entity,
+    layer_maps: HashMap<LayerKind, Entity>,
     hover_map: Entity,
     selected_map: Entity,
+}
+
+impl MapEntities {
+    fn layer_map(&self, kind: LayerKind) -> Entity {
+        *self
+            .layer_maps
+            .get(&kind)
+            .unwrap_or_else(|| panic!("Missing layer map for {kind:?}"))
+    }
 }
 
 struct MapSpawn {
@@ -428,32 +455,77 @@ fn setup(
         images.add(create_outline_image(sprite_width as u32, [255, 255, 255, 255], 2));
     let selected_outline_texture =
         images.add(create_outline_image(sprite_width as u32, [255, 215, 0, 255], 2));
-    let assets = MapAssets {
-        grass_meta,
-        dirt_meta,
-        path_meta,
+    let mut layers = HashMap::new();
+    let mut order = Vec::new();
+    let mut push_layer = |kind: LayerKind,
+                          meta: TilesheetMetadata,
+                          texture: Handle<Image>,
+                          tile_size: TilemapTileSize,
+                          z: f32,
+                          material: Option<LayerMaterial>| {
+        layers.insert(
+            kind,
+            LayerAssets {
+                meta,
+                texture,
+                tile_size,
+                z,
+                material,
+            },
+        );
+        order.push(kind);
+    };
+    push_layer(LayerKind::Grass, grass_meta, grass_texture, tile_size, 1.0, None);
+    push_layer(LayerKind::Dirt, dirt_meta, dirt_texture, tile_size, 0.0, None);
+    push_layer(LayerKind::Path, path_meta, path_texture, tile_size, 0.8, None);
+    push_layer(
+        LayerKind::PathTransition,
         path_transition_meta,
-        transition_meta,
-        water_meta,
-        water_transition_meta,
-        tree_meta,
-        grass_texture,
-        dirt_texture,
-        path_texture,
         path_transition_texture,
+        tile_size,
+        0.9,
+        None,
+    );
+    push_layer(
+        LayerKind::Transition,
+        transition_meta,
         transition_texture,
+        tile_size,
+        0.5,
+        None,
+    );
+    push_layer(
+        LayerKind::Water,
+        water_meta,
         water_texture,
+        tile_size,
+        0.2,
+        Some(LayerMaterial::Water(water_material.clone())),
+    );
+    push_layer(
+        LayerKind::WaterTransition,
+        water_transition_meta,
         water_transition_texture,
+        tile_size,
+        0.3,
+        Some(LayerMaterial::Water(water_transition_material.clone())),
+    );
+    push_layer(
+        LayerKind::Trees,
+        tree_meta,
         tree_texture,
-        water_material: water_material,
-        water_transition_material: water_transition_material,
+        tree_tile_size,
+        1.6,
+        Some(LayerMaterial::Tree(tree_material.clone())),
+    );
+    let assets = MapAssets {
+        layers: LayerCatalog { layers, order },
         tree_material,
         hover_outline_texture,
         selected_outline_texture,
         map_size,
-        tile_size,
-        tree_tile_size,
         grid_size,
+        base_tile_size: tile_size,
     };
     let minimap_grid_size = assets.grid_size;
     let seed = 1337;
@@ -508,32 +580,16 @@ fn spawn_map(
         &base_tiles,
         width,
         height,
-        &assets.grass_meta,
-        &assets.dirt_meta,
-        &assets.path_meta,
-        &assets.path_transition_meta,
-        &assets.water_meta,
-        &assets.water_transition_meta,
-        &assets.transition_meta,
-        &assets.tree_meta,
+        |kind| assets.layer_meta(kind),
         &mut rng,
     );
-    let mut grass_storage = TileStorage::empty(assets.map_size);
-    let grass_entity = commands.spawn_empty().id();
-    let mut dirt_storage = TileStorage::empty(assets.map_size);
-    let dirt_entity = commands.spawn_empty().id();
-    let mut path_storage = TileStorage::empty(assets.map_size);
-    let path_entity = commands.spawn_empty().id();
-    let mut path_transition_storage = TileStorage::empty(assets.map_size);
-    let path_transition_entity = commands.spawn_empty().id();
-    let mut transition_storage = TileStorage::empty(assets.map_size);
-    let transition_entity = commands.spawn_empty().id();
-    let mut water_storage = TileStorage::empty(assets.map_size);
-    let water_entity = commands.spawn_empty().id();
-    let mut water_transition_storage = TileStorage::empty(assets.map_size);
-    let water_transition_entity = commands.spawn_empty().id();
-    let mut tree_storage = TileStorage::empty(assets.map_size);
-    let tree_entity = commands.spawn_empty().id();
+    let mut layer_storages = HashMap::new();
+    let mut layer_entities = HashMap::new();
+    for kind in &assets.layers.order {
+        let entity = commands.spawn_empty().id();
+        layer_entities.insert(*kind, entity);
+        layer_storages.insert(*kind, TileStorage::empty(assets.map_size));
+    }
     let hover_storage = TileStorage::empty(assets.map_size);
     let hover_entity = commands.spawn_empty().id();
     let selected_storage = TileStorage::empty(assets.map_size);
@@ -544,221 +600,85 @@ fn spawn_map(
         for x in 0..width {
             let tile_pos = TilePos { x, y };
             let idx = (y * width + x) as usize;
-            if let Some(index) = layers.grass[idx] {
+            for kind in &assets.layers.order {
+                let Some(layer_tiles) = layers.layers.get(kind) else {
+                    continue;
+                };
+                let Some(index) = layer_tiles[idx] else {
+                    continue;
+                };
+                let layer_entity = *layer_entities
+                    .get(kind)
+                    .unwrap_or_else(|| panic!("Missing layer entity for {kind:?}"));
                 let tile_entity = commands
                     .spawn(TileBundle {
                         position: tile_pos,
-                        tilemap_id: TilemapId(grass_entity),
+                        tilemap_id: TilemapId(layer_entity),
                         texture_index: TileTextureIndex(index),
                         ..Default::default()
                     })
                     .id();
-                grass_storage.set(&tile_pos, tile_entity);
-                tiles.push(tile_entity);
-            }
-            if let Some(index) = layers.dirt[idx] {
-                let tile_entity = commands
-                    .spawn(TileBundle {
-                        position: tile_pos,
-                        tilemap_id: TilemapId(dirt_entity),
-                        texture_index: TileTextureIndex(index),
-                        ..Default::default()
-                    })
-                    .id();
-                dirt_storage.set(&tile_pos, tile_entity);
-                tiles.push(tile_entity);
-            }
-            if let Some(index) = layers.path[idx] {
-                let tile_entity = commands
-                    .spawn(TileBundle {
-                        position: tile_pos,
-                        tilemap_id: TilemapId(path_entity),
-                        texture_index: TileTextureIndex(index),
-                        ..Default::default()
-                    })
-                    .id();
-                path_storage.set(&tile_pos, tile_entity);
-                tiles.push(tile_entity);
-            }
-            if let Some(index) = layers.path_transition[idx] {
-                let tile_entity = commands
-                    .spawn(TileBundle {
-                        position: tile_pos,
-                        tilemap_id: TilemapId(path_transition_entity),
-                        texture_index: TileTextureIndex(index),
-                        ..Default::default()
-                    })
-                    .id();
-                path_transition_storage.set(&tile_pos, tile_entity);
-                tiles.push(tile_entity);
-            }
-            if let Some(index) = layers.transition[idx] {
-                let tile_entity = commands
-                    .spawn(TileBundle {
-                        position: tile_pos,
-                        tilemap_id: TilemapId(transition_entity),
-                        texture_index: TileTextureIndex(index),
-                        ..Default::default()
-                    })
-                    .id();
-                transition_storage.set(&tile_pos, tile_entity);
-                tiles.push(tile_entity);
-            }
-            if let Some(index) = layers.water[idx] {
-                let tile_entity = commands
-                    .spawn(TileBundle {
-                        position: tile_pos,
-                        tilemap_id: TilemapId(water_entity),
-                        texture_index: TileTextureIndex(index),
-                        ..Default::default()
-                    })
-                    .id();
-                water_storage.set(&tile_pos, tile_entity);
-                tiles.push(tile_entity);
-            }
-            if let Some(index) = layers.water_transition[idx] {
-                let tile_entity = commands
-                    .spawn(TileBundle {
-                        position: tile_pos,
-                        tilemap_id: TilemapId(water_transition_entity),
-                        texture_index: TileTextureIndex(index),
-                        ..Default::default()
-                    })
-                    .id();
-                water_transition_storage.set(&tile_pos, tile_entity);
-                tiles.push(tile_entity);
-            }
-            if let Some(index) = layers.trees[idx] {
-                let tile_entity = commands
-                    .spawn(TileBundle {
-                        position: tile_pos,
-                        tilemap_id: TilemapId(tree_entity),
-                        texture_index: TileTextureIndex(index),
-                        ..Default::default()
-                    })
-                    .id();
-                tree_storage.set(&tile_pos, tile_entity);
+                if let Some(storage) = layer_storages.get_mut(kind) {
+                    storage.set(&tile_pos, tile_entity);
+                }
                 tiles.push(tile_entity);
             }
         }
     }
 
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut grass_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    grass_transform.translation.z = 1.0;
-    commands.entity(grass_entity).insert(TilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: grass_storage,
-        texture: TilemapTexture::Single(assets.grass_texture.clone()),
-        tile_size: assets.tile_size,
-        map_type,
-        transform: grass_transform,
-        ..Default::default()
-    });
-    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let dirt_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    commands.entity(dirt_entity).insert(TilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: dirt_storage,
-        texture: TilemapTexture::Single(assets.dirt_texture.clone()),
-        tile_size: assets.tile_size,
-        map_type,
-        transform: dirt_transform,
-        ..Default::default()
-    });
-    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut path_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    path_transform.translation.z = 0.8;
-    commands.entity(path_entity).insert(TilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: path_storage,
-        texture: TilemapTexture::Single(assets.path_texture.clone()),
-        tile_size: assets.tile_size,
-        map_type,
-        transform: path_transform,
-        ..Default::default()
-    });
-    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut path_transition_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    path_transition_transform.translation.z = 0.9;
-    commands.entity(path_transition_entity).insert(TilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: path_transition_storage,
-        texture: TilemapTexture::Single(assets.path_transition_texture.clone()),
-        tile_size: assets.tile_size,
-        map_type,
-        transform: path_transition_transform,
-        ..Default::default()
-    });
-    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut transition_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    transition_transform.translation.z = 0.5;
-    commands.entity(transition_entity).insert(TilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: transition_storage,
-        texture: TilemapTexture::Single(assets.transition_texture.clone()),
-        tile_size: assets.tile_size,
-        map_type,
-        transform: transition_transform,
-        ..Default::default()
-    });
-    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut water_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    water_transform.translation.z = 0.2;
-    commands.entity(water_entity).insert(MaterialTilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: water_storage,
-        texture: TilemapTexture::Single(assets.water_texture.clone()),
-        tile_size: assets.tile_size,
-        map_type,
-        transform: water_transform,
-        material: assets.water_material.clone(),
-        ..Default::default()
-    });
-    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut water_transition_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    water_transition_transform.translation.z = 0.3;
-    commands
-        .entity(water_transition_entity)
-        .insert(MaterialTilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: water_transition_storage,
-        texture: TilemapTexture::Single(assets.water_transition_texture.clone()),
-        tile_size: assets.tile_size,
-        map_type,
-        transform: water_transition_transform,
-        material: assets.water_transition_material.clone(),
-        ..Default::default()
-    });
-    let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
-    let mut tree_transform =
-        get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
-    tree_transform.translation.z = 1.6;
-    commands.entity(tree_entity).insert(MaterialTilemapBundle {
-        grid_size: assets.grid_size,
-        size: assets.map_size,
-        storage: tree_storage,
-        texture: TilemapTexture::Single(assets.tree_texture.clone()),
-        tile_size: assets.tree_tile_size,
-        map_type,
-        transform: tree_transform,
-        material: assets.tree_material.clone(),
-        ..Default::default()
-    });
+    for kind in &assets.layers.order {
+        let layer_assets = assets.layer(*kind);
+        let mut transform =
+            get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
+        transform.translation.z = layer_assets.z;
+        let storage = layer_storages
+            .remove(kind)
+            .unwrap_or_else(|| panic!("Missing layer storage for {kind:?}"));
+        let entity = *layer_entities
+            .get(kind)
+            .unwrap_or_else(|| panic!("Missing layer entity for {kind:?}"));
+        match layer_assets.material.as_ref() {
+            Some(LayerMaterial::Water(material)) => {
+                commands.entity(entity).insert(MaterialTilemapBundle {
+                    grid_size: assets.grid_size,
+                    size: assets.map_size,
+                    storage,
+                    texture: TilemapTexture::Single(layer_assets.texture.clone()),
+                    tile_size: layer_assets.tile_size,
+                    map_type,
+                    transform,
+                    material: material.clone(),
+                    ..Default::default()
+                });
+            }
+            Some(LayerMaterial::Tree(material)) => {
+                commands.entity(entity).insert(MaterialTilemapBundle {
+                    grid_size: assets.grid_size,
+                    size: assets.map_size,
+                    storage,
+                    texture: TilemapTexture::Single(layer_assets.texture.clone()),
+                    tile_size: layer_assets.tile_size,
+                    map_type,
+                    transform,
+                    material: material.clone(),
+                    ..Default::default()
+                });
+            }
+            None => {
+                commands.entity(entity).insert(TilemapBundle {
+                    grid_size: assets.grid_size,
+                    size: assets.map_size,
+                    storage,
+                    texture: TilemapTexture::Single(layer_assets.texture.clone()),
+                    tile_size: layer_assets.tile_size,
+                    map_type,
+                    transform,
+                    ..Default::default()
+                });
+            }
+        }
+    }
     let map_type = TilemapType::Isometric(IsoCoordSystem::Diamond);
     let mut hover_transform =
         get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
@@ -768,7 +688,7 @@ fn spawn_map(
         size: assets.map_size,
         storage: hover_storage,
         texture: TilemapTexture::Single(assets.hover_outline_texture.clone()),
-        tile_size: assets.tile_size,
+        tile_size: assets.base_tile_size,
         map_type,
         transform: hover_transform,
         ..Default::default()
@@ -782,34 +702,31 @@ fn spawn_map(
         size: assets.map_size,
         storage: selected_storage,
         texture: TilemapTexture::Single(assets.selected_outline_texture.clone()),
-        tile_size: assets.tile_size,
+        tile_size: assets.base_tile_size,
         map_type,
         transform: selected_transform,
         ..Default::default()
     });
 
+    let mut tilemaps = Vec::new();
+    for kind in &assets.layers.order {
+        if let Some(entity) = layer_entities.get(kind) {
+            tilemaps.push(*entity);
+        }
+    }
+    tilemaps.push(hover_entity);
+    tilemaps.push(selected_entity);
+
     MapSpawn {
         entities: MapEntities {
-        tilemaps: vec![
-            grass_entity,
-            dirt_entity,
-            path_entity,
-            path_transition_entity,
-            transition_entity,
-            water_entity,
-            water_transition_entity,
-            tree_entity,
-            hover_entity,
-            selected_entity,
-        ],
-        tiles,
-        primary_map: grass_entity,
-        transition_map: transition_entity,
-        path_transition_map: path_transition_entity,
-        water_transition_map: water_transition_entity,
-        tree_map: tree_entity,
-        hover_map: hover_entity,
-        selected_map: selected_entity,
+            tilemaps,
+            tiles,
+            primary_map: *layer_entities
+                .get(&LayerKind::Grass)
+                .unwrap_or_else(|| panic!("Missing grass layer")),
+            layer_maps: layer_entities,
+            hover_map: hover_entity,
+            selected_map: selected_entity,
         },
         base_tiles,
         skeleton,
@@ -1010,29 +927,29 @@ fn update_selected_tile_ui(
         format!("Type: {}", tile_type),
     ];
     if let Some(mask) = transition_mask_for_tile(
-        entities.transition_map,
+        entities.layer_map(LayerKind::Transition),
         tile_pos,
         &storage_q,
         &tile_q,
-        &assets.transition_meta,
+        assets.layer_meta(LayerKind::Transition),
     ) {
         lines.push(format!("Grass Transition: {:08b}", mask));
     }
     if let Some(mask) = transition_mask_for_tile(
-        entities.water_transition_map,
+        entities.layer_map(LayerKind::WaterTransition),
         tile_pos,
         &storage_q,
         &tile_q,
-        &assets.water_transition_meta,
+        assets.layer_meta(LayerKind::WaterTransition),
     ) {
         lines.push(format!("Water Transition: {:08b}", mask));
     }
     if let Some(mask) = transition_mask_for_tile(
-        entities.path_transition_map,
+        entities.layer_map(LayerKind::PathTransition),
         tile_pos,
         &storage_q,
         &tile_q,
-        &assets.path_transition_meta,
+        assets.layer_meta(LayerKind::PathTransition),
     ) {
         lines.push(format!("Path Transition: {:08b}", mask));
     }

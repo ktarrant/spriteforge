@@ -10,6 +10,7 @@ pub use map_skeleton::{AreaType, MapArea, MapSkeleton, MapSkeletonConfig, PathSe
 pub use minimap::{MiniMapPlugin, MiniMapSettings, MiniMapSource, MiniMapState};
 pub use selection::{TileSelectedEvent, TileSelectionPlugin, TileSelectionSettings, TileSelectionState};
 
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BaseTile {
@@ -19,36 +20,47 @@ pub enum BaseTile {
     Water,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LayerKind {
+    Grass,
+    Dirt,
+    Path,
+    PathTransition,
+    Transition,
+    Water,
+    WaterTransition,
+    Trees,
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderTileLayers {
     pub width: u32,
     pub height: u32,
-    pub grass: Vec<Option<u32>>,
-    pub dirt: Vec<Option<u32>>,
-    pub path: Vec<Option<u32>>,
-    pub path_transition: Vec<Option<u32>>,
-    pub water: Vec<Option<u32>>,
-    pub water_transition: Vec<Option<u32>>,
-    pub transition: Vec<Option<u32>>,
-    pub trees: Vec<Option<u32>>,
+    pub layers: HashMap<LayerKind, Vec<Option<u32>>>,
 }
 
 pub mod map_generators;
 
-pub fn build_render_layers<R: rand::Rng>(
+pub fn build_render_layers<'a, R, F>(
     base_tiles: &[BaseTile],
     width: u32,
     height: u32,
-    grass_meta: &TilesheetMetadata,
-    dirt_meta: &TilesheetMetadata,
-    path_meta: &TilesheetMetadata,
-    path_transition_meta: &TilesheetMetadata,
-    water_meta: &TilesheetMetadata,
-    water_transition_meta: &TilesheetMetadata,
-    transition_meta: &TilesheetMetadata,
-    tree_meta: &TilesheetMetadata,
+    meta_for: F,
     rng: &mut R,
-) -> RenderTileLayers {
+) -> RenderTileLayers
+where
+    R: rand::Rng,
+    F: Fn(LayerKind) -> &'a TilesheetMetadata,
+{
+    let grass_meta = meta_for(LayerKind::Grass);
+    let dirt_meta = meta_for(LayerKind::Dirt);
+    let path_meta = meta_for(LayerKind::Path);
+    let path_transition_meta = meta_for(LayerKind::PathTransition);
+    let water_meta = meta_for(LayerKind::Water);
+    let water_transition_meta = meta_for(LayerKind::WaterTransition);
+    let transition_meta = meta_for(LayerKind::Transition);
+    let tree_meta = meta_for(LayerKind::Trees);
+
     let mut grass = vec![None; base_tiles.len()];
     let mut dirt = vec![None; base_tiles.len()];
     let mut path = vec![None; base_tiles.len()];
@@ -127,17 +139,20 @@ pub fn build_render_layers<R: rand::Rng>(
         }
     }
 
+    let mut layers = HashMap::new();
+    layers.insert(LayerKind::Grass, grass);
+    layers.insert(LayerKind::Dirt, dirt);
+    layers.insert(LayerKind::Path, path);
+    layers.insert(LayerKind::PathTransition, path_transition);
+    layers.insert(LayerKind::Water, water);
+    layers.insert(LayerKind::WaterTransition, water_transition);
+    layers.insert(LayerKind::Transition, transition);
+    layers.insert(LayerKind::Trees, trees);
+
     RenderTileLayers {
         width,
         height,
-        grass,
-        dirt,
-        path,
-        path_transition,
-        water,
-        water_transition,
-        transition,
-        trees,
+        layers,
     }
 }
 
