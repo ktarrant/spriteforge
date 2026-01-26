@@ -41,6 +41,9 @@ const WATER_TRANSITION_MASK_IMAGE: &str = "out/tilesheet/water_transition_mask.p
 const TREE_IMAGE: &str = "out/tilesheet/tree.png";
 const TREE_META: &str = "out/tilesheet/tree.json";
 const TREE_MASK_IMAGE: &str = "out/tilesheet/tree_mask.png";
+const BUSH_IMAGE: &str = "out/tilesheet/bush.png";
+const BUSH_META: &str = "out/tilesheet/bush.json";
+const BUSH_MASK_IMAGE: &str = "out/tilesheet/bush_mask.png";
 const MAP_WIDTH: u32 = 64;
 const MAP_HEIGHT: u32 = 64;
 const MAP_LAYOUT_CONFIG: &str = "assets/map_layouts/rural_fork.json";
@@ -68,6 +71,9 @@ struct TilesheetPaths {
     tree_image: PathBuf,
     tree_meta: PathBuf,
     tree_mask_image: PathBuf,
+    bush_image: PathBuf,
+    bush_meta: PathBuf,
+    bush_mask_image: PathBuf,
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
@@ -147,7 +153,7 @@ impl LayerCatalog {
 struct MapAssets {
     layout_config: map_layout::MapLayoutConfig,
     layers: LayerCatalog,
-    tree_material: Handle<TreeLightMaterial>,
+    tree_materials: Vec<Handle<TreeLightMaterial>>,
     hover_outline_texture: Handle<Image>,
     selected_outline_texture: Handle<Image>,
     map_size: TilemapSize,
@@ -268,6 +274,9 @@ fn main() {
             tree_image: PathBuf::from(TREE_IMAGE),
             tree_meta: workspace_root.join(TREE_META),
             tree_mask_image: PathBuf::from(TREE_MASK_IMAGE),
+            bush_image: PathBuf::from(BUSH_IMAGE),
+            bush_meta: workspace_root.join(BUSH_META),
+            bush_mask_image: PathBuf::from(BUSH_MASK_IMAGE),
         })
         .add_systems(Startup, setup)
         .add_systems(
@@ -369,6 +378,13 @@ fn setup(
             return;
         }
     };
+    let bush_meta = match load_tilesheet_metadata(&paths.bush_meta) {
+        Ok(data) => data,
+        Err(err) => {
+            eprintln!("Failed to load bush metadata: {err}");
+            return;
+        }
+    };
 
     let grass_texture: Handle<Image> =
         asset_server.load(paths.grass_image.to_string_lossy().to_string());
@@ -386,12 +402,16 @@ fn setup(
         asset_server.load(paths.water_transition_image.to_string_lossy().to_string());
     let tree_texture: Handle<Image> =
         asset_server.load(paths.tree_image.to_string_lossy().to_string());
+    let bush_texture: Handle<Image> =
+        asset_server.load(paths.bush_image.to_string_lossy().to_string());
     let water_mask_texture: Handle<Image> =
         asset_server.load(paths.water_mask_image.to_string_lossy().to_string());
     let water_transition_mask_texture: Handle<Image> =
         asset_server.load(paths.water_transition_mask_image.to_string_lossy().to_string());
     let tree_mask_texture: Handle<Image> =
         asset_server.load(paths.tree_mask_image.to_string_lossy().to_string());
+    let bush_mask_texture: Handle<Image> =
+        asset_server.load(paths.bush_mask_image.to_string_lossy().to_string());
 
     let (map_width, map_height) = (MAP_WIDTH, MAP_HEIGHT);
     let map_size = TilemapSize {
@@ -410,6 +430,12 @@ fn setup(
     let tree_tile_size = TilemapTileSize {
         x: tree_sprite_width,
         y: tree_sprite_height,
+    };
+    let bush_sprite_width = bush_meta.sprite_width.unwrap_or(256) as f32;
+    let bush_sprite_height = bush_meta.sprite_height.unwrap_or(256) as f32;
+    let bush_tile_size = TilemapTileSize {
+        x: bush_sprite_width,
+        y: bush_sprite_height,
     };
     let grid_size = TilemapGridSize {
         x: sprite_width,
@@ -431,6 +457,10 @@ fn setup(
     });
     let tree_material = tree_materials.add(TreeLightMaterial {
         normal_texture: tree_mask_texture,
+        params: tree_light_params(TimeOfDay::Dawn),
+    });
+    let bush_material = tree_materials.add(TreeLightMaterial {
+        normal_texture: bush_mask_texture,
         params: tree_light_params(TimeOfDay::Dawn),
     });
     let hover_outline_texture =
@@ -500,10 +530,18 @@ fn setup(
         1.6,
         Some(LayerMaterial::Tree(tree_material.clone())),
     );
+    push_layer(
+        LayerKind::Bushes,
+        bush_meta,
+        bush_texture,
+        bush_tile_size,
+        1.5,
+        Some(LayerMaterial::Tree(bush_material.clone())),
+    );
     let assets = MapAssets {
         layout_config,
         layers: LayerCatalog { layers, order },
-        tree_material,
+        tree_materials: vec![tree_material, bush_material],
         hover_outline_texture,
         selected_outline_texture,
         map_size,
@@ -543,10 +581,11 @@ fn spawn_map(
     let mut rng = StdRng::seed_from_u64(seed);
     let (width, height) = (MAP_WIDTH, MAP_HEIGHT);
     let layout = map_layout::generate_map_layout(width, height, &mut rng, &assets.layout_config);
-    let base_tiles = map_raster::rasterize_layout(width, height, &layout);
+    let raster = map_raster::rasterize_layout(width, height, &layout, &mut rng);
     let skeleton = Some(layout);
     let layers = build_render_layers(
-        &base_tiles,
+        &raster.base_tiles,
+        &raster.environment,
         width,
         height,
         |kind| assets.layer_meta(kind),
@@ -697,7 +736,7 @@ fn spawn_map(
             hover_map: hover_entity,
             selected_map: selected_entity,
         },
-        base_tiles,
+        base_tiles: raster.base_tiles,
         skeleton,
     }
 }
@@ -1009,8 +1048,10 @@ fn update_time_of_day(
 
     if *time_of_day != next {
         *time_of_day = next;
-        if let Some(material) = materials.get_mut(&assets.tree_material) {
-            material.params = tree_light_params(next);
+        for handle in &assets.tree_materials {
+            if let Some(material) = materials.get_mut(handle) {
+                material.params = tree_light_params(next);
+            }
         }
         if let Ok(mut text) = text_q.get_mut(ui.text_entity) {
             text.sections[0].value = format!("Time: {}", time_of_day_label(next));

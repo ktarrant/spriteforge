@@ -4,6 +4,7 @@ pub use spriteforge_assets::{
 };
 
 pub use crate::map_layout::{AreaType, MapArea, MapLayout, MapLayoutConfig, PathSegment};
+use crate::map_raster::{EnvironmentKind, EnvironmentObject};
 pub use crate::minimap::{MiniMapPlugin, MiniMapSettings, MiniMapSource, MiniMapState};
 pub use crate::selection::{
     TileSelectedEvent, TileSelectionPlugin, TileSelectionSettings, TileSelectionState,
@@ -29,6 +30,7 @@ pub enum LayerKind {
     Water,
     WaterTransition,
     Trees,
+    Bushes,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +43,7 @@ pub struct RenderTileLayers {
 
 pub fn build_render_layers<'a, R, F>(
     base_tiles: &[BaseTile],
+    environment: &[EnvironmentObject],
     width: u32,
     height: u32,
     meta_for: F,
@@ -58,6 +61,7 @@ where
     let water_transition_meta = meta_for(LayerKind::WaterTransition);
     let transition_meta = meta_for(LayerKind::Transition);
     let tree_meta = meta_for(LayerKind::Trees);
+    let bush_meta = meta_for(LayerKind::Bushes);
 
     let mut grass = vec![None; base_tiles.len()];
     let mut dirt = vec![None; base_tiles.len()];
@@ -67,11 +71,11 @@ where
     let mut water_transition = vec![None; base_tiles.len()];
     let mut transition = vec![None; base_tiles.len()];
     let mut trees = vec![None; base_tiles.len()];
+    let mut bushes = vec![None; base_tiles.len()];
 
     let transition_lookup = build_transition_lookup(transition_meta);
     let path_transition_lookup = build_transition_lookup(path_transition_meta);
     let water_transition_lookup = build_transition_lookup(water_transition_meta);
-    let tree_density = 0.08;
 
     for y in 0..height {
         for x in 0..width {
@@ -88,10 +92,6 @@ where
                     } else {
                         let index = rng.gen_range(0..grass_meta.tile_count) as u32;
                         grass[idx] = Some(index);
-                        if rng.gen_bool(tree_density) {
-                            let tree_index = rng.gen_range(0..tree_meta.tile_count) as u32;
-                            trees[idx] = Some(tree_index);
-                        }
                     }
                 }
                 BaseTile::Water => {
@@ -137,6 +137,23 @@ where
         }
     }
 
+    for object in environment {
+        if object.x >= width || object.y >= height {
+            continue;
+        }
+        let idx = (object.y * width + object.x) as usize;
+        match object.kind {
+            EnvironmentKind::Tree => {
+                let tree_index = rng.gen_range(0..tree_meta.tile_count) as u32;
+                trees[idx] = Some(tree_index);
+            }
+            EnvironmentKind::Bush => {
+                let bush_index = rng.gen_range(0..bush_meta.tile_count) as u32;
+                bushes[idx] = Some(bush_index);
+            }
+        }
+    }
+
     let mut layers = HashMap::new();
     layers.insert(LayerKind::Grass, grass);
     layers.insert(LayerKind::Dirt, dirt);
@@ -146,6 +163,7 @@ where
     layers.insert(LayerKind::WaterTransition, water_transition);
     layers.insert(LayerKind::Transition, transition);
     layers.insert(LayerKind::Trees, trees);
+    layers.insert(LayerKind::Bushes, bushes);
 
     RenderTileLayers {
         width,

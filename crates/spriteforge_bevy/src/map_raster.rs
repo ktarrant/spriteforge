@@ -1,5 +1,25 @@
 use crate::map_layout::{AreaType, MapLayout, PathSegment};
 use crate::BaseTile;
+use rand::Rng;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnvironmentKind {
+    Tree,
+    Bush,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnvironmentObject {
+    pub kind: EnvironmentKind,
+    pub x: u32,
+    pub y: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct RasterizedMap {
+    pub base_tiles: Vec<BaseTile>,
+    pub environment: Vec<EnvironmentObject>,
+}
 
 pub fn rasterize_paths(width: u32, height: u32, paths: &[PathSegment]) -> Vec<BaseTile> {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
@@ -9,7 +29,12 @@ pub fn rasterize_paths(width: u32, height: u32, paths: &[PathSegment]) -> Vec<Ba
     cells
 }
 
-pub fn rasterize_layout(width: u32, height: u32, skeleton: &MapLayout) -> Vec<BaseTile> {
+pub fn rasterize_layout<R: Rng>(
+    width: u32,
+    height: u32,
+    skeleton: &MapLayout,
+    rng: &mut R,
+) -> RasterizedMap {
     let mut cells = vec![BaseTile::Grass; (width * height) as usize];
     for segment in &skeleton.paths {
         rasterize_segment(width, height, segment, &mut cells);
@@ -23,8 +48,42 @@ pub fn rasterize_layout(width: u32, height: u32, skeleton: &MapLayout) -> Vec<Ba
     for segment in &skeleton.water_paths {
         rasterize_water_segment(width, height, segment, &mut cells);
     }
-    cells
+    let environment = place_environment_objects(width, height, &cells, rng);
+    RasterizedMap {
+        base_tiles: cells,
+        environment,
+    }
 }
+
+fn place_environment_objects<R: Rng>(
+    width: u32,
+    height: u32,
+    tiles: &[BaseTile],
+    rng: &mut R,
+) -> Vec<EnvironmentObject> {
+    let environment_density = 0.08;
+    let bush_chance = 0.35;
+    let mut objects = Vec::new();
+    for y in 0..height {
+        for x in 0..width {
+            let idx = (y * width + x) as usize;
+            if tiles[idx] != BaseTile::Grass {
+                continue;
+            }
+            if !rng.gen_bool(environment_density) {
+                continue;
+            }
+            let kind = if rng.gen_bool(bush_chance) {
+                EnvironmentKind::Bush
+            } else {
+                EnvironmentKind::Tree
+            };
+            objects.push(EnvironmentObject { kind, x, y });
+        }
+    }
+    objects
+}
+
 
 fn rasterize_segment(width: u32, height: u32, segment: &PathSegment, cells: &mut [BaseTile]) {
     let dx = (segment.end_x - segment.start_x).signum();
@@ -191,10 +250,10 @@ mod tests {
             &mut rng,
             &sample_layout_config(),
         );
-        let tiles = rasterize_layout(width, height, &layout);
-        assert_eq!(tiles.len(), (width * height) as usize);
+        let raster = rasterize_layout(width, height, &layout, &mut rng);
+        assert_eq!(raster.base_tiles.len(), (width * height) as usize);
 
-        let (dirt_count, dirt_pct) = dirt_metrics(&tiles);
+        let (dirt_count, dirt_pct) = dirt_metrics(&raster.base_tiles);
         let min_dirt = (width * height) as usize / 20;
         let max_dirt = (width * height) as usize * 3 / 4;
         assert!(
