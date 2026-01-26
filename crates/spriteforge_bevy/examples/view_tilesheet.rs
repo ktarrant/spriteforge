@@ -642,6 +642,7 @@ fn spawn_map(
         let layer_assets = assets.layer(*kind);
         let mut transform =
             get_tilemap_center_transform(&assets.map_size, &assets.grid_size, &map_type, 0.0);
+        transform.translation.y += (layer_assets.tile_size.y - layer_assets.tile_size.x) * 0.5;
         transform.translation.z = layer_assets.z;
         let storage = layer_storages
             .remove(kind)
@@ -904,11 +905,7 @@ fn spawn_time_of_day_ui(commands: &mut Commands) {
 fn update_selected_tile_ui(
     mut events: EventReader<TileSelectedEvent>,
     mut ui: ResMut<SelectedTileUi>,
-    assets: Res<MapAssets>,
-    entities: Res<MapEntities>,
     tile_data: Res<MapTileData>,
-    storage_q: Query<&TileStorage>,
-    tile_q: Query<&TileTextureIndex>,
     mut text_q: Query<&mut Text>,
 ) {
     let mut latest = None;
@@ -949,48 +946,7 @@ fn update_selected_tile_ui(
             .join(", ");
         lines.push(format!("Environment: {}", labels));
     }
-    if let Some(mask) = transition_mask_for_tile(
-        entities.layer_map(LayerKind::Transition),
-        tile_pos,
-        &storage_q,
-        &tile_q,
-        assets.layer_meta(LayerKind::Transition),
-    ) {
-        lines.push(format!("Grass Transition: {:08b}", mask));
-    }
-    if let Some(mask) = transition_mask_for_tile(
-        entities.layer_map(LayerKind::WaterTransition),
-        tile_pos,
-        &storage_q,
-        &tile_q,
-        assets.layer_meta(LayerKind::WaterTransition),
-    ) {
-        lines.push(format!("Water Transition: {:08b}", mask));
-    }
-    if let Some(mask) = transition_mask_for_tile(
-        entities.layer_map(LayerKind::PathTransition),
-        tile_pos,
-        &storage_q,
-        &tile_q,
-        assets.layer_meta(LayerKind::PathTransition),
-    ) {
-        lines.push(format!("Path Transition: {:08b}", mask));
-    }
     text.sections[0].value = lines.join("\n");
-}
-
-fn transition_mask_for_tile(
-    map_entity: Entity,
-    tile_pos: TilePos,
-    storage_q: &Query<&TileStorage>,
-    tile_q: &Query<&TileTextureIndex>,
-    meta: &TilesheetMetadata,
-) -> Option<u8> {
-    let storage = storage_q.get(map_entity).ok()?;
-    let tile_entity = storage.get(&tile_pos)?;
-    let texture_index = tile_q.get(tile_entity).ok()?;
-    let tile = meta.tiles.get(texture_index.0 as usize)?;
-    tile.transition_mask
 }
 
 fn environment_for_tile(
