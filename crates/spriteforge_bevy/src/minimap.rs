@@ -4,7 +4,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::window::PrimaryWindow;
 use bevy_ecs_tilemap::prelude::{TilemapGridSize, TilemapSize, TilemapType, TilePos};
 
-use crate::map_generators::map_skeleton::{MapArea, MapSkeleton, PathSegment};
+use crate::map_skeleton::{MapArea, MapSkeleton, PathSegment};
 use crate::{BaseTile, TileSelectionState};
 
 #[derive(Resource, Clone)]

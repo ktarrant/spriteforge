@@ -14,7 +14,8 @@ use rand::rngs::StdRng;
 use spriteforge_bevy::{
     build_render_layers,
     load_tilesheet_metadata,
-    map_generators::{map_skeleton, path, terrain},
+    map_generators::{path, terrain},
+    map_skeleton,
     BaseTile, MapSkeleton, MiniMapPlugin, MiniMapSource, TileSelectedEvent,
     TileSelectionPlugin, TileSelectionSettings, TileSelectionState, TilesheetMetadata,
 };

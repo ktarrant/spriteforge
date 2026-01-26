@@ -1,10 +1,10 @@
 use rand::rngs::StdRng;
 
-use crate::map_generators::map_skeleton::{AreaType, MapSkeleton, PathSegment};
+use crate::map_skeleton::{AreaType, MapSkeleton, PathSegment};
 use crate::BaseTile;
 
 pub fn generate_path_map(width: u32, height: u32, rng: &mut StdRng) -> Vec<BaseTile> {
-    let skeleton = crate::map_generators::map_skeleton::generate_map_skeleton(width, height, rng);
+    let skeleton = crate::map_skeleton::generate_map_skeleton(width, height, rng);
     rasterize_skeleton(width, height, &skeleton)
 }
 
@@ -187,7 +187,7 @@ mod tests {
         let height = 64;
         let mut rng = StdRng::seed_from_u64(1337);
         let skeleton =
-            crate::map_generators::map_skeleton::generate_map_skeleton(width, height, &mut rng);
+            crate::map_skeleton::generate_map_skeleton(width, height, &mut rng);
         let total_length: i32 = skeleton
             .paths
             .iter()

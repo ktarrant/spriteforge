@@ -3,11 +3,10 @@ pub use spriteforge_assets::{
     CORNER_NE, CORNER_NW, CORNER_SE, CORNER_SW, EDGE_E, EDGE_MASK, EDGE_N, EDGE_S, EDGE_W,
 };
 
+pub mod map_skeleton;
 pub mod minimap;
 pub mod selection;
-pub use map_generators::map_skeleton::{
-    AreaType, MapArea, MapSkeleton, MapSkeletonConfig, PathSegment,
-};
+pub use map_skeleton::{AreaType, MapArea, MapSkeleton, MapSkeletonConfig, PathSegment};
 pub use minimap::{MiniMapPlugin, MiniMapSettings, MiniMapSource, MiniMapState};
 pub use selection::{TileSelectedEvent, TileSelectionPlugin, TileSelectionSettings, TileSelectionState};
 
